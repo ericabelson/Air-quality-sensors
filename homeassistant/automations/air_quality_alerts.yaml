@@ -1,0 +1,316 @@
+# UTSensing Air Quality Alerts
+#
+# Copy these automations to your Home Assistant
+# Settings > Automations > Create Automation > Edit in YAML
+#
+# Or add to your automations.yaml file
+
+# =============================================================================
+# CO2 Alerts
+# =============================================================================
+
+- id: 'utsensing_co2_warning'
+  alias: "Air Quality: CO2 Warning"
+  description: "Alert when CO2 exceeds warning threshold"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_co2
+      above: 1000
+      for:
+        minutes: 5
+  condition:
+    - condition: template
+      value_template: "{{ states('sensor.air_quality_co2') | float > states('input_number.co2_warning_threshold') | float }}"
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "CO2 Warning"
+        message: >
+          CO2 level is {{ states('sensor.air_quality_co2') }} ppm.
+          Consider opening a window or increasing ventilation.
+        notification_id: co2_warning
+    - service: notify.notify
+      data:
+        title: "Air Quality Alert"
+        message: "CO2 is {{ states('sensor.air_quality_co2') }} ppm. Ventilate room."
+
+- id: 'utsensing_co2_danger'
+  alias: "Air Quality: CO2 Danger"
+  description: "Alert when CO2 exceeds danger threshold"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_co2
+      above: 1500
+      for:
+        minutes: 2
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "HIGH CO2 - Take Action"
+        message: >
+          CO2 level is dangerously high at {{ states('sensor.air_quality_co2') }} ppm!
+          Open windows immediately. Prolonged exposure may cause drowsiness and headaches.
+        notification_id: co2_danger
+    - service: notify.notify
+      data:
+        title: "HIGH CO2 ALERT"
+        message: "CO2 at {{ states('sensor.air_quality_co2') }} ppm! Ventilate NOW!"
+
+- id: 'utsensing_co2_normal'
+  alias: "Air Quality: CO2 Normal"
+  description: "Clear alerts when CO2 returns to normal"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_co2
+      below: 800
+      for:
+        minutes: 5
+  action:
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: co2_warning
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: co2_danger
+
+# =============================================================================
+# PM2.5 Alerts
+# =============================================================================
+
+- id: 'utsensing_pm25_warning'
+  alias: "Air Quality: PM2.5 Warning"
+  description: "Alert when PM2.5 exceeds moderate levels"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_pm2_5
+      above: 35
+      for:
+        minutes: 10
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "PM2.5 Warning"
+        message: >
+          PM2.5 is {{ states('sensor.air_quality_pm2_5') }} μg/m³ (AQI: {{ states('sensor.air_quality_aqi') }}).
+          Consider using an air purifier or staying indoors.
+        notification_id: pm25_warning
+    - service: notify.notify
+      data:
+        title: "Air Quality Alert"
+        message: "PM2.5 is {{ states('sensor.air_quality_pm2_5') }} μg/m³. Air quality is unhealthy."
+
+- id: 'utsensing_pm25_danger'
+  alias: "Air Quality: PM2.5 Danger"
+  description: "Alert when PM2.5 exceeds unhealthy levels"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_pm2_5
+      above: 55
+      for:
+        minutes: 5
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "HIGH PM2.5 - Health Alert"
+        message: >
+          PM2.5 is {{ states('sensor.air_quality_pm2_5') }} μg/m³ (AQI: {{ states('sensor.air_quality_aqi') }}).
+          This is unhealthy for everyone. Avoid outdoor activities. Use air purifier if available.
+        notification_id: pm25_danger
+    - service: notify.notify
+      data:
+        title: "HIGH PM2.5 ALERT"
+        message: "PM2.5 at {{ states('sensor.air_quality_pm2_5') }} μg/m³. Stay indoors!"
+
+- id: 'utsensing_pm25_normal'
+  alias: "Air Quality: PM2.5 Normal"
+  description: "Clear alerts when PM2.5 returns to normal"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_pm2_5
+      below: 12
+      for:
+        minutes: 10
+  action:
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: pm25_warning
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: pm25_danger
+
+# =============================================================================
+# Carbon Monoxide Alerts (CRITICAL - Life Safety)
+# =============================================================================
+
+- id: 'utsensing_co_warning'
+  alias: "Air Quality: CO Warning"
+  description: "Alert when CO is detected"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_co
+      above: 9
+      for:
+        minutes: 5
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Carbon Monoxide Detected"
+        message: >
+          CO level is {{ states('sensor.air_quality_co') }} ppm.
+          Check for sources: gas appliances, car exhaust, heaters.
+          Ventilate immediately.
+        notification_id: co_warning
+    - service: notify.notify
+      data:
+        title: "CO DETECTED"
+        message: "CO at {{ states('sensor.air_quality_co') }} ppm! Ventilate and check sources."
+
+- id: 'utsensing_co_danger'
+  alias: "Air Quality: CO Danger"
+  description: "CRITICAL alert for dangerous CO levels"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_co
+      above: 35
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "DANGER: HIGH CARBON MONOXIDE"
+        message: >
+          CO level is DANGEROUS at {{ states('sensor.air_quality_co') }} ppm!
+          EVACUATE THE AREA IMMEDIATELY.
+          Open all windows and doors.
+          Do NOT use gas appliances.
+          Call emergency services if symptoms occur.
+        notification_id: co_danger
+    - service: notify.notify
+      data:
+        title: "DANGER: HIGH CO"
+        message: "CO at {{ states('sensor.air_quality_co') }} ppm! EVACUATE NOW!"
+    # Repeat notification every 5 minutes while dangerous
+    - delay:
+        minutes: 5
+    - condition: numeric_state
+      entity_id: sensor.air_quality_co
+      above: 35
+    - service: notify.notify
+      data:
+        title: "DANGER: HIGH CO (STILL)"
+        message: "CO still at {{ states('sensor.air_quality_co') }} ppm! Have you evacuated?"
+
+# =============================================================================
+# TVOC Alerts
+# =============================================================================
+
+- id: 'utsensing_tvoc_warning'
+  alias: "Air Quality: TVOC Warning"
+  description: "Alert when VOC levels are elevated"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_tvoc
+      above: 660
+      for:
+        minutes: 10
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "High VOC Levels"
+        message: >
+          TVOC is {{ states('sensor.air_quality_tvoc') }} ppb.
+          Common sources: cleaning products, paint, new furniture, air fresheners.
+          Increase ventilation and identify sources.
+        notification_id: tvoc_warning
+
+# =============================================================================
+# Humidity Alerts
+# =============================================================================
+
+- id: 'utsensing_humidity_low'
+  alias: "Air Quality: Low Humidity"
+  description: "Alert when humidity is too low"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_humidity
+      below: 30
+      for:
+        hours: 1
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Low Humidity"
+        message: >
+          Humidity is {{ states('sensor.air_quality_humidity') }}%.
+          Dry air may cause irritation. Consider using a humidifier.
+        notification_id: humidity_low
+
+- id: 'utsensing_humidity_high'
+  alias: "Air Quality: High Humidity"
+  description: "Alert when humidity is too high"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.air_quality_humidity
+      above: 70
+      for:
+        hours: 1
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "High Humidity"
+        message: >
+          Humidity is {{ states('sensor.air_quality_humidity') }}%.
+          High humidity can promote mold growth. Consider using a dehumidifier.
+        notification_id: humidity_high
+
+# =============================================================================
+# Sensor Offline Alerts
+# =============================================================================
+
+- id: 'utsensing_sensors_offline'
+  alias: "Air Quality: Sensors Offline"
+  description: "Alert when sensors stop reporting"
+  trigger:
+    - platform: state
+      entity_id: sensor.air_quality_co2
+      to: "unavailable"
+      for:
+        minutes: 5
+    - platform: state
+      entity_id: sensor.air_quality_co2
+      to: "unknown"
+      for:
+        minutes: 5
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Air Quality Sensors Offline"
+        message: >
+          The air quality sensors have stopped reporting.
+          Check:
+          - Is the Raspberry Pi running?
+          - Is the Arduino connected?
+          - Is the UTSensing service running?
+
+          Run: sudo systemctl status utsensing
+        notification_id: sensors_offline
+    - service: notify.notify
+      data:
+        title: "Sensors Offline"
+        message: "Air quality sensors stopped reporting. Check system."
+
+- id: 'utsensing_sensors_online'
+  alias: "Air Quality: Sensors Online"
+  description: "Clear offline alert when sensors come back"
+  trigger:
+    - platform: state
+      entity_id: sensor.air_quality_co2
+      from: "unavailable"
+    - platform: state
+      entity_id: sensor.air_quality_co2
+      from: "unknown"
+  condition:
+    - condition: template
+      value_template: "{{ states('sensor.air_quality_co2') not in ['unavailable', 'unknown'] }}"
+  action:
+    - service: persistent_notification.dismiss
+      data:
+        notification_id: sensors_offline

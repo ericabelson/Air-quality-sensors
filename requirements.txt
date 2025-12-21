@@ -1,0 +1,26 @@
+# UTSensing Air Quality Monitor - Python Dependencies
+# Install with: pip3 install -r requirements.txt
+
+# Core dependencies
+pyserial>=3.5           # Serial communication with Arduino
+pynmea2>=1.18.0         # GPS NMEA sentence parsing
+getmac>=0.9.0           # MAC address detection
+netifaces>=0.11.0       # Network interface information
+PyYAML>=6.0             # YAML configuration files
+
+# MQTT communication
+paho-mqtt>=1.6.0        # MQTT client for Home Assistant integration
+
+# Data processing
+numpy>=1.21.0           # Numerical computations (optional, for advanced analytics)
+
+# Image processing (for sky camera, optional)
+# Uncomment if using sky camera feature:
+# opencv-python>=4.5.0
+# scikit-learn>=1.0.0
+# Pillow>=9.0.0
+
+# Development tools (optional)
+# pytest>=7.0.0         # Testing
+# black>=22.0.0         # Code formatting
+# flake8>=4.0.0         # Linting

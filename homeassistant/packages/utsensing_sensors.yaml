@@ -1,0 +1,358 @@
+# UTSensing Air Quality Sensors Package
+# Copy this file to your Home Assistant packages directory
+#
+# In configuration.yaml, add:
+#   homeassistant:
+#     packages: !include_dir_named packages
+
+mqtt:
+  sensor:
+    # =========================================================================
+    # SCD30 - CO2, Temperature, Humidity Sensor
+    # =========================================================================
+    - name: "Air Quality CO2"
+      unique_id: utsensing_co2
+      state_topic: "utsensing/SCD30"
+      value_template: "{{ value_json.co2 | float | round(0) }}"
+      unit_of_measurement: "ppm"
+      icon: mdi:molecule-co2
+      device_class: carbon_dioxide
+      state_class: measurement
+
+    - name: "Air Quality Temperature"
+      unique_id: utsensing_temperature
+      state_topic: "utsensing/SCD30"
+      value_template: "{{ value_json.temperature | float | round(1) }}"
+      unit_of_measurement: "°C"
+      icon: mdi:thermometer
+      device_class: temperature
+      state_class: measurement
+
+    - name: "Air Quality Humidity SCD30"
+      unique_id: utsensing_humidity_scd30
+      state_topic: "utsensing/SCD30"
+      value_template: "{{ value_json.humidity | float | round(1) }}"
+      unit_of_measurement: "%"
+      icon: mdi:water-percent
+      device_class: humidity
+      state_class: measurement
+
+    # =========================================================================
+    # BME680 - Environmental Sensor
+    # =========================================================================
+    - name: "Air Quality Temperature BME680"
+      unique_id: utsensing_temperature_bme680
+      state_topic: "utsensing/BME680"
+      value_template: "{{ value_json.temperature | float | round(1) }}"
+      unit_of_measurement: "°C"
+      icon: mdi:thermometer
+      device_class: temperature
+      state_class: measurement
+
+    - name: "Air Quality Pressure"
+      unique_id: utsensing_pressure
+      state_topic: "utsensing/BME680"
+      value_template: "{{ (value_json.pressure | float * 10) | round(1) }}"
+      unit_of_measurement: "hPa"
+      icon: mdi:gauge
+      device_class: pressure
+      state_class: measurement
+
+    - name: "Air Quality Humidity"
+      unique_id: utsensing_humidity
+      state_topic: "utsensing/BME680"
+      value_template: "{{ value_json.humidity | float | round(1) }}"
+      unit_of_measurement: "%"
+      icon: mdi:water-percent
+      device_class: humidity
+      state_class: measurement
+
+    - name: "Air Quality Gas Resistance"
+      unique_id: utsensing_gas_resistance
+      state_topic: "utsensing/BME680"
+      value_template: "{{ value_json.gas | float | round(1) }}"
+      unit_of_measurement: "kΩ"
+      icon: mdi:air-filter
+      state_class: measurement
+
+    # =========================================================================
+    # SGP30 - VOC and eCO2 Sensor
+    # =========================================================================
+    - name: "Air Quality TVOC"
+      unique_id: utsensing_tvoc
+      state_topic: "utsensing/SGP30"
+      value_template: "{{ value_json.TVOC | float | round(0) }}"
+      unit_of_measurement: "ppb"
+      icon: mdi:cloud
+      device_class: volatile_organic_compounds_parts
+      state_class: measurement
+
+    - name: "Air Quality eCO2"
+      unique_id: utsensing_eco2
+      state_topic: "utsensing/SGP30"
+      value_template: "{{ value_json.eCO2 | float | round(0) }}"
+      unit_of_measurement: "ppm"
+      icon: mdi:molecule-co2
+      state_class: measurement
+
+    # =========================================================================
+    # PMSA003I - Particulate Matter Sensor
+    # =========================================================================
+    - name: "Air Quality PM1"
+      unique_id: utsensing_pm1
+      state_topic: "utsensing/PMSA003I"
+      value_template: "{{ value_json.pm1Env | float | round(1) }}"
+      unit_of_measurement: "μg/m³"
+      icon: mdi:blur
+      device_class: pm1
+      state_class: measurement
+
+    - name: "Air Quality PM2.5"
+      unique_id: utsensing_pm25
+      state_topic: "utsensing/PMSA003I"
+      value_template: "{{ value_json.pm2p5Env | float | round(1) }}"
+      unit_of_measurement: "μg/m³"
+      icon: mdi:blur
+      device_class: pm25
+      state_class: measurement
+
+    - name: "Air Quality PM10"
+      unique_id: utsensing_pm10
+      state_topic: "utsensing/PMSA003I"
+      value_template: "{{ value_json.pm10Env | float | round(1) }}"
+      unit_of_measurement: "μg/m³"
+      icon: mdi:blur-linear
+      device_class: pm10
+      state_class: measurement
+
+    # Particle Bin Counts
+    - name: "Air Quality Particles 0.3um"
+      unique_id: utsensing_particles_03um
+      state_topic: "utsensing/PMSA003I"
+      value_template: "{{ value_json.binCount0p3um | float | round(0) }}"
+      unit_of_measurement: "count/dL"
+      icon: mdi:dots-hexagon
+      state_class: measurement
+
+    - name: "Air Quality Particles 0.5um"
+      unique_id: utsensing_particles_05um
+      state_topic: "utsensing/PMSA003I"
+      value_template: "{{ value_json.binCount0p5um | float | round(0) }}"
+      unit_of_measurement: "count/dL"
+      icon: mdi:dots-hexagon
+      state_class: measurement
+
+    - name: "Air Quality Particles 1um"
+      unique_id: utsensing_particles_1um
+      state_topic: "utsensing/PMSA003I"
+      value_template: "{{ value_json.binCount1um | float | round(0) }}"
+      unit_of_measurement: "count/dL"
+      icon: mdi:dots-hexagon
+      state_class: measurement
+
+    - name: "Air Quality Particles 2.5um"
+      unique_id: utsensing_particles_25um
+      state_topic: "utsensing/PMSA003I"
+      value_template: "{{ value_json.binCount2p5um | float | round(0) }}"
+      unit_of_measurement: "count/dL"
+      icon: mdi:dots-hexagon
+      state_class: measurement
+
+    # =========================================================================
+    # SEN0321 - Ozone Sensor
+    # =========================================================================
+    - name: "Air Quality Ozone"
+      unique_id: utsensing_ozone
+      state_topic: "utsensing/SEN0321"
+      value_template: "{{ value_json.Ozone | float | round(0) }}"
+      unit_of_measurement: "ppb"
+      icon: mdi:cloud-outline
+      device_class: ozone
+      state_class: measurement
+
+    # =========================================================================
+    # MGSV2 - Multi-Gas Sensor
+    # =========================================================================
+    - name: "Air Quality NO2"
+      unique_id: utsensing_no2
+      state_topic: "utsensing/MGSV2"
+      value_template: "{{ value_json.NO2 | float | round(3) }}"
+      unit_of_measurement: "ppm"
+      icon: mdi:molecule
+      device_class: nitrogen_dioxide
+      state_class: measurement
+
+    - name: "Air Quality Ethanol"
+      unique_id: utsensing_ethanol
+      state_topic: "utsensing/MGSV2"
+      value_template: "{{ value_json.C2H5OH | float | round(1) }}"
+      unit_of_measurement: "ppm"
+      icon: mdi:bottle-wine
+      state_class: measurement
+
+    - name: "Air Quality VOC MGSV2"
+      unique_id: utsensing_voc_mgsv2
+      state_topic: "utsensing/MGSV2"
+      value_template: "{{ value_json.VOC | float | round(1) }}"
+      unit_of_measurement: "ppm"
+      icon: mdi:cloud
+      state_class: measurement
+
+    - name: "Air Quality CO"
+      unique_id: utsensing_co
+      state_topic: "utsensing/MGSV2"
+      value_template: "{{ value_json.CO | float | round(1) }}"
+      unit_of_measurement: "ppm"
+      icon: mdi:molecule
+      device_class: carbon_monoxide
+      state_class: measurement
+
+    # =========================================================================
+    # MQ136 - Hydrogen Sulfide Sensor
+    # =========================================================================
+    - name: "Air Quality H2S Raw"
+      unique_id: utsensing_h2s_raw
+      state_topic: "utsensing/MQ136"
+      value_template: "{{ value_json.rawH2s | float | round(0) }}"
+      unit_of_measurement: "ADC"
+      icon: mdi:egg
+      state_class: measurement
+
+# =============================================================================
+# Template Sensors for Calculated Values
+# =============================================================================
+template:
+  - sensor:
+      # AQI Calculation based on PM2.5
+      - name: "Air Quality AQI"
+        unique_id: utsensing_aqi
+        unit_of_measurement: "AQI"
+        icon: mdi:gauge
+        state: >
+          {% set pm25 = states('sensor.air_quality_pm2_5') | float(0) %}
+          {% if pm25 <= 12 %}
+            {{ ((50/12) * pm25) | round(0) }}
+          {% elif pm25 <= 35.4 %}
+            {{ (((100-51)/(35.4-12.1)) * (pm25-12.1) + 51) | round(0) }}
+          {% elif pm25 <= 55.4 %}
+            {{ (((150-101)/(55.4-35.5)) * (pm25-35.5) + 101) | round(0) }}
+          {% elif pm25 <= 150.4 %}
+            {{ (((200-151)/(150.4-55.5)) * (pm25-55.5) + 151) | round(0) }}
+          {% elif pm25 <= 250.4 %}
+            {{ (((300-201)/(250.4-150.5)) * (pm25-150.5) + 201) | round(0) }}
+          {% elif pm25 <= 350.4 %}
+            {{ (((400-301)/(350.4-250.5)) * (pm25-250.5) + 301) | round(0) }}
+          {% elif pm25 <= 500.4 %}
+            {{ (((500-401)/(500.4-350.5)) * (pm25-350.5) + 401) | round(0) }}
+          {% else %}
+            500
+          {% endif %}
+        attributes:
+          category: >
+            {% set aqi = this.state | int(0) %}
+            {% if aqi <= 50 %}Good
+            {% elif aqi <= 100 %}Moderate
+            {% elif aqi <= 150 %}Unhealthy for Sensitive Groups
+            {% elif aqi <= 200 %}Unhealthy
+            {% elif aqi <= 300 %}Very Unhealthy
+            {% else %}Hazardous{% endif %}
+          color: >
+            {% set aqi = this.state | int(0) %}
+            {% if aqi <= 50 %}#00E400
+            {% elif aqi <= 100 %}#FFFF00
+            {% elif aqi <= 150 %}#FF7E00
+            {% elif aqi <= 200 %}#FF0000
+            {% elif aqi <= 300 %}#8F3F97
+            {% else %}#7E0023{% endif %}
+
+      # CO2 Status
+      - name: "Air Quality CO2 Status"
+        unique_id: utsensing_co2_status
+        icon: mdi:molecule-co2
+        state: >
+          {% set co2 = states('sensor.air_quality_co2') | float(0) %}
+          {% if co2 < 600 %}Excellent
+          {% elif co2 < 800 %}Good
+          {% elif co2 < 1000 %}Fair
+          {% elif co2 < 1500 %}Poor
+          {% elif co2 < 2500 %}Bad
+          {% else %}Dangerous{% endif %}
+        attributes:
+          color: >
+            {% set co2 = states('sensor.air_quality_co2') | float(0) %}
+            {% if co2 < 800 %}#00E400
+            {% elif co2 < 1000 %}#FFFF00
+            {% elif co2 < 1500 %}#FF7E00
+            {% elif co2 < 2500 %}#FF0000
+            {% else %}#7E0023{% endif %}
+          action: >
+            {% set co2 = states('sensor.air_quality_co2') | float(0) %}
+            {% if co2 < 800 %}No action needed
+            {% elif co2 < 1000 %}Consider ventilation
+            {% elif co2 < 1500 %}Open windows
+            {% elif co2 < 2500 %}Ventilate immediately
+            {% else %}Leave area{% endif %}
+
+      # H2S Calculated PPM (from raw ADC)
+      - name: "Air Quality H2S"
+        unique_id: utsensing_h2s_ppm
+        unit_of_measurement: "ppm"
+        icon: mdi:egg
+        state: >
+          {% set raw = states('sensor.air_quality_h2s_raw') | float(0) %}
+          {% set vcc = 5.0 %}
+          {% set rl = 10000 %}
+          {% set r0 = 10000 %}
+          {% set adc_max = 1023 %}
+          {% if raw > 0 and raw < adc_max %}
+            {% set voltage = (raw / adc_max) * vcc %}
+            {% set rs = rl * (vcc - voltage) / voltage %}
+            {% set ratio = rs / r0 %}
+            {% if ratio > 0 %}
+              {% set m = -0.48 %}
+              {% set b = 0.62 %}
+              {% set log_ratio = log(ratio, 10) %}
+              {% set ppm = 10 ** ((log_ratio - b) / m) %}
+              {{ ppm | round(2) }}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+
+# =============================================================================
+# Input Numbers for Threshold Configuration
+# =============================================================================
+input_number:
+  co2_warning_threshold:
+    name: CO2 Warning Threshold
+    min: 600
+    max: 2000
+    step: 100
+    unit_of_measurement: ppm
+    icon: mdi:molecule-co2
+
+  co2_danger_threshold:
+    name: CO2 Danger Threshold
+    min: 1000
+    max: 3000
+    step: 100
+    unit_of_measurement: ppm
+    icon: mdi:molecule-co2
+
+  pm25_warning_threshold:
+    name: PM2.5 Warning Threshold
+    min: 10
+    max: 100
+    step: 5
+    unit_of_measurement: μg/m³
+    icon: mdi:blur
+
+  pm25_danger_threshold:
+    name: PM2.5 Danger Threshold
+    min: 25
+    max: 200
+    step: 5
+    unit_of_measurement: μg/m³
+    icon: mdi:blur

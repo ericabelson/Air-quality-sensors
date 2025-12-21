@@ -1,0 +1,448 @@
+# UTSensing Air Quality Dashboard
+#
+# To use this dashboard:
+# 1. Go to Settings > Dashboards > Add Dashboard
+# 2. Create a new dashboard named "Air Quality"
+# 3. Click the three dots > Edit Dashboard > Raw Configuration Editor
+# 4. Paste this entire file content
+# 5. Save
+
+title: Air Quality Monitor
+views:
+  # =========================================================================
+  # MAIN VIEW - Overview Dashboard
+  # =========================================================================
+  - title: Overview
+    path: overview
+    icon: mdi:home
+    badges: []
+    cards:
+      # Header with timestamp
+      - type: markdown
+        content: |
+          # Air Quality Monitor
+          **Last Update:** {{ now().strftime('%B %d, %Y at %H:%M:%S') }}
+        card_mod:
+          style: |
+            ha-card {
+              background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
+              color: white;
+            }
+
+      # Overall AQI Large Display
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-template-card
+            primary: "Air Quality Index"
+            secondary: "{{ states('sensor.air_quality_aqi') }} - {{ state_attr('sensor.air_quality_aqi', 'category') }}"
+            icon: mdi:air-filter
+            icon_color: >
+              {% set aqi = states('sensor.air_quality_aqi') | int(0) %}
+              {% if aqi <= 50 %}green
+              {% elif aqi <= 100 %}yellow
+              {% elif aqi <= 150 %}orange
+              {% elif aqi <= 200 %}red
+              {% elif aqi <= 300 %}purple
+              {% else %}#7E0023{% endif %}
+            card_mod:
+              style: |
+                ha-card {
+                  font-size: 1.2em;
+                }
+
+      # Main Sensor Gauges
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.air_quality_co2
+            name: CO₂
+            min: 400
+            max: 2500
+            severity:
+              green: 400
+              yellow: 800
+              red: 1000
+            needle: true
+
+          - type: gauge
+            entity: sensor.air_quality_pm2_5
+            name: PM2.5
+            min: 0
+            max: 150
+            severity:
+              green: 0
+              yellow: 12
+              red: 35
+            needle: true
+
+          - type: gauge
+            entity: sensor.air_quality_tvoc
+            name: TVOC
+            min: 0
+            max: 2200
+            severity:
+              green: 0
+              yellow: 220
+              red: 660
+            needle: true
+
+      # Status Cards Row
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.air_quality_co2_status
+            name: CO₂ Status
+            icon: mdi:molecule-co2
+
+          - type: entity
+            entity: sensor.air_quality_aqi
+            name: AQI
+            icon: mdi:gauge
+
+      # Environmental Conditions
+      - type: glance
+        title: Environmental Conditions
+        show_name: true
+        show_icon: true
+        show_state: true
+        entities:
+          - entity: sensor.air_quality_temperature
+            name: Temp
+          - entity: sensor.air_quality_humidity
+            name: Humidity
+          - entity: sensor.air_quality_pressure
+            name: Pressure
+          - entity: sensor.air_quality_ozone
+            name: Ozone
+
+      # Gas Levels
+      - type: glance
+        title: Gas Levels
+        show_name: true
+        show_icon: true
+        show_state: true
+        entities:
+          - entity: sensor.air_quality_co
+            name: CO
+          - entity: sensor.air_quality_no2
+            name: NO₂
+          - entity: sensor.air_quality_ethanol
+            name: Ethanol
+          - entity: sensor.air_quality_h2s
+            name: H₂S
+
+      # Particulate Matter Detail
+      - type: entities
+        title: Particulate Matter
+        entities:
+          - entity: sensor.air_quality_pm1
+            name: PM1.0
+          - entity: sensor.air_quality_pm2_5
+            name: PM2.5
+          - entity: sensor.air_quality_pm10
+            name: PM10
+
+  # =========================================================================
+  # HISTORY VIEW - 3 Day Trends
+  # =========================================================================
+  - title: History
+    path: history
+    icon: mdi:chart-line
+    badges: []
+    cards:
+      - type: markdown
+        content: |
+          # 3-Day History
+          Showing trends for the past 72 hours
+
+      # CO2 History
+      - type: history-graph
+        title: CO₂ Levels
+        hours_to_show: 72
+        refresh_interval: 60
+        entities:
+          - entity: sensor.air_quality_co2
+            name: CO₂ (ppm)
+
+      # Particulate Matter History
+      - type: history-graph
+        title: Particulate Matter
+        hours_to_show: 72
+        refresh_interval: 60
+        entities:
+          - entity: sensor.air_quality_pm1
+            name: PM1
+          - entity: sensor.air_quality_pm2_5
+            name: PM2.5
+          - entity: sensor.air_quality_pm10
+            name: PM10
+
+      # Temperature and Humidity History
+      - type: history-graph
+        title: Temperature & Humidity
+        hours_to_show: 72
+        refresh_interval: 60
+        entities:
+          - entity: sensor.air_quality_temperature
+            name: Temperature (°C)
+          - entity: sensor.air_quality_humidity
+            name: Humidity (%)
+
+      # VOC and Gas History
+      - type: history-graph
+        title: VOC & Gases
+        hours_to_show: 72
+        refresh_interval: 60
+        entities:
+          - entity: sensor.air_quality_tvoc
+            name: TVOC (ppb)
+          - entity: sensor.air_quality_ozone
+            name: Ozone (ppb)
+
+      # AQI History
+      - type: history-graph
+        title: Air Quality Index
+        hours_to_show: 72
+        refresh_interval: 60
+        entities:
+          - entity: sensor.air_quality_aqi
+            name: AQI
+
+  # =========================================================================
+  # DETAILS VIEW - All Sensor Data
+  # =========================================================================
+  - title: Details
+    path: details
+    icon: mdi:format-list-bulleted
+    badges: []
+    cards:
+      - type: markdown
+        content: |
+          # Detailed Sensor Readings
+          All raw sensor data
+
+      # SCD30 Section
+      - type: entities
+        title: SCD30 - CO₂ Sensor
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_co2
+            name: CO₂ Concentration
+          - entity: sensor.air_quality_temperature
+            name: Temperature
+          - entity: sensor.air_quality_humidity_scd30
+            name: Humidity
+
+      # BME680 Section
+      - type: entities
+        title: BME680 - Environmental
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_temperature_bme680
+            name: Temperature
+          - entity: sensor.air_quality_humidity
+            name: Humidity
+          - entity: sensor.air_quality_pressure
+            name: Pressure
+          - entity: sensor.air_quality_gas_resistance
+            name: Gas Resistance
+
+      # SGP30 Section
+      - type: entities
+        title: SGP30 - VOC Sensor
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_tvoc
+            name: Total VOC
+          - entity: sensor.air_quality_eco2
+            name: Equivalent CO₂
+
+      # PMSA003I Section
+      - type: entities
+        title: PMSA003I - Particulate Matter
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_pm1
+            name: PM1.0
+          - entity: sensor.air_quality_pm2_5
+            name: PM2.5
+          - entity: sensor.air_quality_pm10
+            name: PM10
+          - type: divider
+          - entity: sensor.air_quality_particles_0_3um
+            name: Particles ≥0.3μm
+          - entity: sensor.air_quality_particles_0_5um
+            name: Particles ≥0.5μm
+          - entity: sensor.air_quality_particles_1um
+            name: Particles ≥1.0μm
+          - entity: sensor.air_quality_particles_2_5um
+            name: Particles ≥2.5μm
+
+      # SEN0321 Section
+      - type: entities
+        title: SEN0321 - Ozone
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_ozone
+            name: Ozone Concentration
+
+      # MGSV2 Section
+      - type: entities
+        title: MGSV2 - Multi-Gas
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_no2
+            name: Nitrogen Dioxide
+          - entity: sensor.air_quality_co
+            name: Carbon Monoxide
+          - entity: sensor.air_quality_ethanol
+            name: Ethanol
+          - entity: sensor.air_quality_voc_mgsv2
+            name: VOC
+
+      # MQ136 Section
+      - type: entities
+        title: MQ136 - Hydrogen Sulfide
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_h2s_raw
+            name: Raw ADC Value
+          - entity: sensor.air_quality_h2s
+            name: Calculated H₂S
+
+  # =========================================================================
+  # SETTINGS VIEW - Threshold Configuration
+  # =========================================================================
+  - title: Settings
+    path: settings
+    icon: mdi:cog
+    badges: []
+    cards:
+      - type: markdown
+        content: |
+          # Settings
+          Configure alert thresholds
+
+      - type: entities
+        title: CO₂ Thresholds
+        entities:
+          - entity: input_number.co2_warning_threshold
+            name: Warning Level
+          - entity: input_number.co2_danger_threshold
+            name: Danger Level
+
+      - type: entities
+        title: PM2.5 Thresholds
+        entities:
+          - entity: input_number.pm25_warning_threshold
+            name: Warning Level
+          - entity: input_number.pm25_danger_threshold
+            name: Danger Level
+
+      - type: markdown
+        content: |
+          ## Reference Values
+
+          ### CO₂ Levels
+          | Level | Meaning |
+          |-------|---------|
+          | <600 ppm | Excellent |
+          | 600-800 ppm | Good |
+          | 800-1000 ppm | Fair |
+          | 1000-1500 ppm | Poor |
+          | >1500 ppm | Bad |
+
+          ### PM2.5 Levels (AQI)
+          | μg/m³ | AQI | Category |
+          |-------|-----|----------|
+          | 0-12 | 0-50 | Good |
+          | 12-35 | 51-100 | Moderate |
+          | 35-55 | 101-150 | Unhealthy for Sensitive |
+          | 55-150 | 151-200 | Unhealthy |
+          | >150 | >200 | Very Unhealthy |
+
+  # =========================================================================
+  # TABLET VIEW - Optimized for Fire Tablet
+  # =========================================================================
+  - title: Tablet
+    path: tablet
+    icon: mdi:tablet
+    panel: true
+    badges: []
+    cards:
+      - type: custom:layout-card
+        layout_type: grid
+        layout:
+          grid-template-columns: 1fr 1fr 1fr
+          grid-template-rows: auto auto auto
+          grid-gap: 16px
+          padding: 16px
+        cards:
+          # Large AQI Display
+          - type: vertical-stack
+            view_layout:
+              grid-column: span 3
+            cards:
+              - type: markdown
+                content: |
+                  <div style="text-align: center; font-size: 2em; padding: 20px;">
+                    <strong>Air Quality Index: {{ states('sensor.air_quality_aqi') }}</strong>
+                    <br>
+                    <span style="font-size: 0.7em;">{{ state_attr('sensor.air_quality_aqi', 'category') }}</span>
+                  </div>
+
+          # Main Gauges
+          - type: gauge
+            entity: sensor.air_quality_co2
+            name: CO₂
+            min: 400
+            max: 2000
+            severity:
+              green: 400
+              yellow: 800
+              red: 1000
+            needle: true
+
+          - type: gauge
+            entity: sensor.air_quality_pm2_5
+            name: PM2.5
+            min: 0
+            max: 100
+            severity:
+              green: 0
+              yellow: 12
+              red: 35
+            needle: true
+
+          - type: gauge
+            entity: sensor.air_quality_tvoc
+            name: TVOC
+            min: 0
+            max: 1000
+            severity:
+              green: 0
+              yellow: 220
+              red: 660
+            needle: true
+
+          # Environmental Info
+          - type: glance
+            view_layout:
+              grid-column: span 3
+            show_name: true
+            show_icon: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.air_quality_temperature
+                name: Temp
+              - entity: sensor.air_quality_humidity
+                name: Humidity
+              - entity: sensor.air_quality_pressure
+                name: Pressure
+              - entity: sensor.air_quality_ozone
+                name: Ozone
+              - entity: sensor.air_quality_co
+                name: CO
+              - entity: sensor.air_quality_no2
+                name: NO₂

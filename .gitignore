@@ -12,8 +12,13 @@ bin-release/
 *.air
 *.ipa
 *.apk
-*.yaml
-*.yml
+# Note: yaml files are now allowed for Home Assistant configuration
+# *.yaml
+# *.yml
+
+# But ignore secrets and credentials yaml files
+**/secrets.yaml
+**/credentials.yaml
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
