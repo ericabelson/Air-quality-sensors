@@ -247,8 +247,8 @@ source ~/.bashrc
 
 ```bash
 cd ~
-git clone https://github.com/mi3nts/UTSensing.git
-cd UTSensing
+git clone https://github.com/ericabelson/Air-quality-sensors.git
+cd Air-quality-sensors
 ```
 
 ### Step 3.6: Install Python Dependencies
@@ -265,7 +265,7 @@ pip3 install pyserial pynmea2 paho-mqtt getmac netifaces PyYAML
 ### Step 3.7: Flash the Arduino Nano
 
 ```bash
-cd ~/UTSensing/firmware/airNano
+cd ~/Air-quality-sensors/firmware/airNano
 pio run -t upload
 ```
 
@@ -302,7 +302,7 @@ sudo chown -R pi:pi /home/utsensing
 Edit the configuration file:
 
 ```bash
-nano ~/UTSensing/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py
+nano ~/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py
 ```
 
 Update these lines:
@@ -335,7 +335,7 @@ You should see something like `/dev/ttyUSB0`. If you see multiple ports, the Ard
 ### Step 5.1: Test the Sensor Reader
 
 ```bash
-cd ~/UTSensing/firmware/xu4Mqqt
+cd ~/Air-quality-sensors/firmware/xu4Mqqt
 python3 nanoReader.py
 ```
 
@@ -394,8 +394,8 @@ After=network.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/UTSensing/firmware/xu4Mqqt
-ExecStart=/usr/bin/python3 /home/pi/UTSensing/firmware/xu4Mqqt/nanoReader.py
+WorkingDirectory=/home/pi/Air-quality-sensors/firmware/xu4Mqqt
+ExecStart=/usr/bin/python3 /home/pi/Air-quality-sensors/firmware/xu4Mqqt/nanoReader.py
 Restart=always
 RestartSec=10
 

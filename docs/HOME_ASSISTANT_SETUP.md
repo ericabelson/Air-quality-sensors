@@ -148,7 +148,7 @@ sudo systemctl restart mosquitto
 Edit the UTSensing configuration:
 
 ```bash
-nano ~/UTSensing/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py
+nano ~/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py
 ```
 
 Update these settings:
@@ -185,7 +185,7 @@ Copy the Home Assistant configuration files from this repository:
 
 ```bash
 # Copy sensor configuration
-cp ~/UTSensing/homeassistant/packages/utsensing_sensors.yaml ~/homeassistant/packages/
+cp ~/Air-quality-sensors/homeassistant/packages/utsensing_sensors.yaml ~/homeassistant/packages/
 
 # Create packages directory if it doesn't exist
 mkdir -p ~/homeassistant/packages

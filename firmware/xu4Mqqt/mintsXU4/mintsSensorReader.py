@@ -1,21 +1,16 @@
 # ***************************************************************************
-#  mintsXU4
+#  Air Quality Sensor Reader Module
 #   ---------------------------------
-#   Written by: Lakitha Omal Harindha Wijeratne
-#   - for -
-#   Mints: Multi-scale Integrated Sensing and Simulation
-#   ---------------------------------
+#   Original author: Lakitha Omal Harindha Wijeratne
 #   Date: February 4th, 2019
 #   ---------------------------------
-#   Updated for UTSensing at the request of Abelson, Eric S
-#    
-#   Updated on : June 19th, 2021
+#   Updated and maintained by: Eric S. Abelson
+#   Updated on: June 19th, 2021
 #   ---------------------------------
-
-#   This module is written for generic implimentation of MINTS projects
+#
+#   This module provides sensor reading functionality for air quality monitoring
 #   --------------------------------------------------------------------------
-#   https://github.com/mi3nts
-#   http://utdmints.info/
+#   https://github.com/ericabelson/Air-quality-sensors
 #  ***************************************************************************
 
 import serial
