@@ -79,10 +79,10 @@ source ~/.bashrc
 
 # Clone the repository
 cd ~
-git clone https://github.com/mi3nts/UTSensing.git
+git clone https://github.com/ericabelson/Air-quality-sensors.git
 
 # Install Python dependencies
-cd UTSensing
+cd Air-quality-sensors
 pip3 install -r requirements.txt
 ```
 
@@ -92,7 +92,7 @@ pip3 install -r requirements.txt
 
 ```bash
 # Navigate to Arduino firmware
-cd ~/UTSensing/firmware/airNano
+cd ~/Air-quality-sensors/firmware/airNano
 
 # Set permissions for serial port
 sudo chmod 666 /dev/ttyUSB0
@@ -119,7 +119,7 @@ sudo mkdir -p /home/utsensing/utData/raw
 sudo chown -R pi:pi /home/utsensing
 
 # Test the sensor reader
-cd ~/UTSensing/firmware/xu4Mqqt
+cd ~/Air-quality-sensors/firmware/xu4Mqqt
 python3 nanoReader.py
 ```
 
@@ -149,8 +149,8 @@ After=network.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/UTSensing/firmware/xu4Mqqt
-ExecStart=/usr/bin/python3 /home/pi/UTSensing/firmware/xu4Mqqt/nanoReader.py
+WorkingDirectory=/home/pi/Air-quality-sensors/firmware/xu4Mqqt
+ExecStart=/usr/bin/python3 /home/pi/Air-quality-sensors/firmware/xu4Mqqt/nanoReader.py
 Restart=always
 RestartSec=10
 
@@ -223,7 +223,7 @@ sudo systemctl restart mosquitto
 
 ```bash
 # Edit configuration
-nano ~/UTSensing/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py
+nano ~/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py
 
 # Change these lines:
 #   mqttOn = True
@@ -247,7 +247,7 @@ sudo systemctl restart utsensing
 ```bash
 # Copy sensor configuration
 mkdir -p ~/homeassistant/packages
-cp ~/UTSensing/homeassistant/packages/utsensing_sensors.yaml ~/homeassistant/packages/
+cp ~/Air-quality-sensors/homeassistant/packages/utsensing_sensors.yaml ~/homeassistant/packages/
 
 # Add packages to configuration
 echo 'homeassistant:' >> ~/homeassistant/configuration.yaml
@@ -263,7 +263,7 @@ docker restart homeassistant
 2. Go to **Settings** → **Dashboards** → **Add Dashboard**
 3. Name it "Air Quality"
 4. Open the dashboard, click ⋮ → **Edit Dashboard** → ⋮ → **Raw configuration editor**
-5. Copy content from `~/UTSensing/homeassistant/dashboards/air_quality_dashboard.yaml`
+5. Copy content from `~/Air-quality-sensors/homeassistant/dashboards/air_quality_dashboard.yaml`
 6. Paste and save
 
 ---

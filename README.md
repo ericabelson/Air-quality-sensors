@@ -1,6 +1,6 @@
 # UTSensing Air Quality Monitoring System
 
-A comprehensive, open-source air quality monitoring platform developed by the Multi-scale Integrated Sensing and Simulation (MINTS) group at UT Dallas. This system collects, processes, and visualizes environmental data from multiple sensors.
+A comprehensive, open-source air quality monitoring platform for collecting, processing, and visualizing environmental data from multiple sensors in real-time.
 
 ---
 
@@ -148,8 +148,8 @@ See [Complete Raspberry Pi 4 Setup Guide](docs/RASPBERRY_PI_SETUP.md)
 ### Option B: I have the hardware assembled, need software only
 ```bash
 # 1. Clone the repository
-git clone https://github.com/mi3nts/UTSensing.git
-cd UTSensing
+git clone https://github.com/ericabelson/Air-quality-sensors.git
+cd Air-quality-sensors
 
 # 2. Install Python dependencies
 pip3 install -r requirements.txt
@@ -220,7 +220,7 @@ This system integrates with Home Assistant for beautiful dashboards viewable on 
 sensor:
   - platform: mqtt
     name: "Living Room CO2"
-    state_topic: "utsensing/scd30/co2"
+    state_topic: "airquality/scd30/co2"
     unit_of_measurement: "ppm"
     icon: mdi:molecule-co2
 ```
@@ -268,7 +268,7 @@ ps aux | grep Reader
 ## Project Structure
 
 ```
-UTSensing/
+Air-quality-sensors/
 ├── README.md                 # This file
 ├── LICENSE                   # MIT License
 ├── requirements.txt          # Python dependencies
@@ -329,6 +329,5 @@ Copyright (c) 2021 MINTS
 
 ## Links
 
-- [MINTS Project Website](http://utdmints.info/)
-- [GitHub Repository](https://github.com/mi3nts)
-- [Report Issues](https://github.com/mi3nts/UTSensing/issues)
+- [GitHub Repository](https://github.com/ericabelson/Air-quality-sensors)
+- [Report Issues](https://github.com/ericabelson/Air-quality-sensors/issues)
