@@ -2,6 +2,8 @@
 
 Get your UTSensing air quality monitor up and running in under 2 hours.
 
+**IMPORTANT:** Review [Technical Reference Appendix](TECHNICAL_REFERENCE.md) for verified sensor datasheets, official software download links, and detailed specifications.
+
 ---
 
 ## Before You Start

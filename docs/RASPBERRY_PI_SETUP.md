@@ -6,6 +6,12 @@ This guide takes you from an unboxed Raspberry Pi 4 and sensor kit to a fully fu
 **Skill Level:** Beginner (no prior experience needed)
 **What You'll Have:** A working air quality monitor with a web dashboard
 
+**IMPORTANT:** Before starting, review the [Technical Reference Appendix](TECHNICAL_REFERENCE.md) for:
+- Verified sensor specifications and datasheets
+- Official software download links
+- Detailed wiring diagrams
+- Calibration procedures
+
 ---
 
 ## Table of Contents
@@ -233,15 +239,41 @@ Wait 1-2 minutes, then SSH back in.
 
 ### Step 3.4: Install PlatformIO (for Arduino programming)
 
+**What is PlatformIO?**
+PlatformIO is a professional development tool for embedded systems that replaces the Arduino IDE. It's faster, more reliable, and works perfectly on a headless Raspberry Pi.
+
+**Official Website:** [https://platformio.org](https://platformio.org)
+**Documentation:** [https://docs.platformio.org](https://docs.platformio.org)
+
+Install PlatformIO Core (command-line version):
+
 ```bash
 pip3 install platformio
 ```
 
-Add to PATH:
+This will download and install PlatformIO. **It may take 2-5 minutes.**
+
+Add PlatformIO to your PATH so you can run it from anywhere:
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
+
+**Verify installation:**
+```bash
+pio --version
+```
+
+You should see output like: `PlatformIO Core, version X.X.X`
+
+**If the `pio` command is not found:**
+- Log out and back in (SSH disconnect and reconnect)
+- Or manually add to PATH: `export PATH="$HOME/.local/bin:$PATH"`
+
+**Troubleshooting:**
+- **"Command not found"**: Ensure ~/.local/bin is in PATH (check with `echo $PATH`)
+- **Permission denied**: Don't use sudo with pip3
+- **Installation failed**: Ensure Python 3 is installed (`python3 --version`)
 
 ### Step 3.5: Clone the Repository
 
@@ -264,25 +296,76 @@ pip3 install pyserial pynmea2 paho-mqtt getmac netifaces PyYAML
 
 ### Step 3.7: Flash the Arduino Nano
 
+**What this does:** This uploads the sensor-reading firmware from your computer to the Arduino Nano's memory.
+
+**Before proceeding:**
+1. Ensure Arduino Nano is connected to Raspberry Pi via USB cable
+2. Verify Arduino is detected:
+   ```bash
+   ls /dev/ttyUSB*
+   ```
+   You should see `/dev/ttyUSB0` or similar
+
+**Set permissions (IMPORTANT):**
+```bash
+# Give permission to access the serial port
+sudo chmod 666 /dev/ttyUSB0
+
+# Add your user to dialout group for permanent access
+sudo usermod -a -G dialout $USER
+```
+
+**Log out and back in for group change to take effect:**
+```bash
+exit
+```
+Then SSH back in: `ssh pi@[YOUR_PI_IP]`
+
+**Now flash the firmware:**
 ```bash
 cd ~/Air-quality-sensors/firmware/airNano
 pio run -t upload
 ```
 
-**If upload fails**, try:
+**What you should see:**
+```
+Processing nanoatmega328 (platform: atmelavr; board: nanoatmega328; framework: arduino)
+...
+Linking .pio/build/nanoatmega328/firmware.elf
+Building .pio/build/nanoatmega328/firmware.hex
+...
+avrdude: 6502 bytes of flash written
+avrdude: verifying ...
+avrdude: 6502 bytes of flash verified
+
+SUCCESS
+```
+
+**If upload fails with "permission denied":**
+- Run: `sudo chmod 666 /dev/ttyUSB0`
+- Ensure you logged out and back in after adding user to dialout group
+
+**If upload fails with "device not found":**
+- Check USB cable is connected
+- Try a different USB port on the Raspberry Pi
+- Verify with: `dmesg | tail -20` (you should see "USB device" messages)
+- Try a different USB cable (some cables are power-only, not data)
+
+**If upload fails with "programmer not responding":**
+- Arduino Nano clone may use old bootloader
+- Edit `platformio.ini` and add: `upload_speed = 57600`
+- Try uploading again
+
+**To see detailed Arduino output:**
 ```bash
-# Find the Arduino port
-ls /dev/ttyUSB*
+dmesg | tail -20
+```
 
-# Set permissions
-sudo chmod 666 /dev/ttyUSB0
-
-# Add your user to dialout group (permanent fix)
-sudo usermod -a -G dialout $USER
-
-# Log out and back in for group change to take effect
-exit
-# Then SSH back in and try again
+Look for lines like:
+```
+usb 1-1.3: new full-speed USB device number 5 using dwc_otg
+usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523
+ch341-uart converter now attached to ttyUSB0
 ```
 
 ---

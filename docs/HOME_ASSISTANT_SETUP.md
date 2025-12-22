@@ -5,6 +5,8 @@ This guide walks you through setting up a beautiful air quality dashboard in Hom
 **Time Required:** 1-2 hours
 **Prerequisites:** Raspberry Pi with UTSensing running (see [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md))
 
+**For technical details:** See [Technical Reference Appendix](TECHNICAL_REFERENCE.md) for Home Assistant installation guides, MQTT broker documentation, and official resources
+
 ---
 
 ## Table of Contents
