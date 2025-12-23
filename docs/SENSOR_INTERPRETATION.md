@@ -2,6 +2,8 @@
 
 This document explains how to interpret raw sensor data and convert it into meaningful, human-readable values. Each sensor is covered with its formulas, calibration notes, and health reference tables.
 
+**For detailed sensor specifications and official datasheets, see [Technical Reference Appendix](TECHNICAL_REFERENCE.md).**
+
 ---
 
 ## Table of Contents

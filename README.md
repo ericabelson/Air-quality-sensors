@@ -146,6 +146,9 @@ UTSensing provides real-time monitoring of:
 See [Complete Raspberry Pi 4 Setup Guide](docs/RASPBERRY_PI_SETUP.md)
 
 ### Option B: I have the hardware assembled, need software only
+
+**IMPORTANT:** Read [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) first for verified sensor specifications and software installation details.
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/ericabelson/Air-quality-sensors.git
@@ -154,14 +157,25 @@ cd Air-quality-sensors
 # 2. Install Python dependencies
 pip3 install -r requirements.txt
 
-# 3. Flash Arduino Nano firmware
+# 3. Install PlatformIO (for Arduino programming)
+pip3 install platformio
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# 4. Flash Arduino Nano firmware
 cd firmware/airNano
 pio run -t upload
 
-# 4. Start data collection
+# 5. Start data collection
 cd ../xu4Mqqt
 ./runAll.sh
 ```
+
+**See [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) for:**
+- Official sensor datasheets with download links
+- PlatformIO installation troubleshooting
+- I2C wiring diagrams
+- Calibration procedures
 
 ### Option C: I want to view data on a dashboard
 See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md)
@@ -172,6 +186,7 @@ See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md)
 
 | Document | Description |
 |----------|-------------|
+| [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) | **START HERE** - Sensor datasheets, specifications, and verified technical details |
 | [RASPBERRY_PI_SETUP.md](docs/RASPBERRY_PI_SETUP.md) | Complete step-by-step Raspberry Pi 4 setup |
 | [SENSOR_INTERPRETATION.md](docs/SENSOR_INTERPRETATION.md) | Understanding sensor data with formulas |
 | [HOME_ASSISTANT_SETUP.md](docs/HOME_ASSISTANT_SETUP.md) | Dashboard and Home Assistant integration |

@@ -6,6 +6,8 @@ Transform an Amazon Fire tablet into a dedicated air quality display that shows 
 **Cost:** Fire HD 8 ($50-100) or Fire HD 10 ($80-150)
 **Prerequisites:** Home Assistant running with UTSensing sensors configured
 
+**For technical details:** See [Technical Reference Appendix](TECHNICAL_REFERENCE.md) for Fully Kiosk Browser official download links and ADB installation guides
+
 ---
 
 ## Table of Contents
@@ -86,22 +88,128 @@ Fully Kiosk Browser is an app designed for dedicated displays. It:
 - Supports motion-activated screen wake
 - Can dim the screen at night
 
-### Step 2.1: Download Fully Kiosk Browser
+### IMPORTANT: Fully Kiosk Browser is NOT in the Amazon Appstore
 
-**Method A: From Amazon Appstore (Easiest)**
+**Fully Kiosk Browser is NOT available in the Amazon Appstore** and must be sideloaded manually. Follow the detailed instructions below.
 
-1. Open the **Amazon Appstore** on your Fire tablet
-2. Search for "Fully Kiosk Browser"
-3. Install the free version
+### Step 2.1: Enable Installation from Unknown Sources
 
-**Method B: Sideload APK (If not in Appstore)**
+Before downloading Fully Kiosk Browser, you must enable installation of apps from outside the Amazon Appstore:
 
-1. On the Fire tablet, go to **Settings** → **Security & Privacy**
-2. Enable **Apps from Unknown Sources**
-3. Open Silk Browser
-4. Go to: `https://www.fully-kiosk.com/en/#download`
-5. Download the APK file
-6. Open the downloaded file and install
+1. On your Fire tablet, swipe down from the top
+2. Tap **Settings** (gear icon)
+3. Tap **Security & Privacy**
+4. Find **Apps from Unknown Sources** or **Install Unknown Apps**
+5. Toggle it to **ON**
+6. Read the warning and tap **OK**
+
+**Why this is safe:** You're only installing from the official Fully Kiosk website, not random sources.
+
+### Step 2.2: Download Fully Kiosk Browser APK
+
+Now download the app directly from the official website:
+
+1. On your Fire tablet, open the **Silk Browser** app
+2. In the address bar, type exactly: `https://www.fully-kiosk.com`
+3. Tap **Enter**
+4. Tap the **Download** link in the menu
+5. Scroll down to find "**Fully Kiosk Browser for Fire OS**"
+6. Tap **Download APK**
+7. A prompt will appear asking to download a file
+8. Tap **Download** to confirm
+9. Wait for the download to complete (you'll see a notification)
+
+**File location:** The APK file will be saved to your Downloads folder (typically named `fully-kiosk-fire.apk` or similar).
+
+**Official Download Link (if typing):** `https://www.fully-kiosk.com/en/#download`
+
+### Step 2.3: Install the APK File
+
+Now install the app you just downloaded:
+
+1. On your Fire tablet, open the **Docs** app
+   - Swipe up from the bottom to see all apps
+   - Look for **Docs** (it's the default file manager)
+2. Tap **Local Storage** (or **Internal Storage**)
+3. Tap **Download** folder
+4. Find the file named something like `fully-kiosk-fire.apk` or `de.ozerov.fully.apk`
+5. Tap on the `.apk` file
+6. A screen will appear saying "Do you want to install this application?"
+7. Tap **Install**
+8. Wait for installation to complete (5-10 seconds)
+9. Tap **Done** (do NOT tap "Open" yet)
+
+**Troubleshooting:**
+- **Can't find Docs app?** Try opening **Files** or **File Manager**
+- **Install button is grayed out?** Go back to Step 2.1 and ensure "Apps from Unknown Sources" is enabled
+- **Installation failed?** Download the APK again; the file may have been corrupted
+
+### Alternative Method: Install via Computer (Advanced)
+
+If you have a computer and USB cable, you can install via ADB (Android Debug Bridge):
+
+**Requirements:**
+- Windows, Mac, or Linux computer
+- USB cable (USB-A to Micro-USB or USB-C, depending on your Fire tablet model)
+- Android Platform Tools
+
+**Step-by-Step:**
+
+1. **On your Fire Tablet:**
+   - Settings → Device Options → About Fire Tablet
+   - Tap **Serial Number** 7 times to enable Developer Options
+   - Go back → **Developer Options**
+   - Enable **ADB Debugging**
+   - Enable **Apps from Unknown Sources**
+
+2. **On your Computer:**
+   - Download Android Platform Tools:
+     - Windows: [https://dl.google.com/android/repository/platform-tools-latest-windows.zip](https://dl.google.com/android/repository/platform-tools-latest-windows.zip)
+     - Mac: [https://dl.google.com/android/repository/platform-tools-latest-darwin.zip](https://dl.google.com/android/repository/platform-tools-latest-darwin.zip)
+     - Linux: [https://dl.google.com/android/repository/platform-tools-latest-linux.zip](https://dl.google.com/android/repository/platform-tools-latest-linux.zip)
+   - Extract the ZIP file to a folder (e.g., `C:\platform-tools`)
+
+3. **Download Fully Kiosk APK to your computer:**
+   - Visit [https://www.fully-kiosk.com/en/#download](https://www.fully-kiosk.com/en/#download)
+   - Download "Fully Kiosk Browser for Fire OS"
+   - Save the `.apk` file to the same folder as platform-tools
+
+4. **Connect Tablet to Computer:**
+   - Connect Fire tablet to computer via USB cable
+   - On tablet, tap **Allow** when prompted "Allow USB debugging?"
+   - Check "Always allow from this computer"
+
+5. **Install via ADB:**
+
+   **Windows:**
+   - Open Command Prompt
+   - Navigate to platform-tools folder:
+     ```cmd
+     cd C:\platform-tools
+     adb devices
+     ```
+   - You should see your device listed
+   - Install the APK:
+     ```cmd
+     adb install fully-kiosk-fire.apk
+     ```
+
+   **Mac/Linux:**
+   - Open Terminal
+   - Navigate to platform-tools folder:
+     ```bash
+     cd ~/platform-tools
+     ./adb devices
+     ```
+   - You should see your device listed
+   - Install the APK:
+     ```bash
+     ./adb install fully-kiosk-fire.apk
+     ```
+
+6. **Verify Installation:**
+   - Look for "Success" message in terminal
+   - On tablet, check app drawer for Fully Kiosk Browser icon
 
 ### Step 2.2: Grant Permissions
 
