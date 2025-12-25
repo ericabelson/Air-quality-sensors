@@ -368,14 +368,17 @@ homeassistant:
     - type: trusted_networks
       trusted_networks:
         - 192.168.1.0/24  # Your local network - adjust if different
-      allow_bypass_login: true
+      allow_trusted_networks_bypass: true
     - type: homeassistant
 ```
 
+**⚠️ IMPORTANT:** The parameter is `allow_trusted_networks_bypass` (not `allow_bypass_login` - this is a common mistake!)
+
 4. Save the file (press `Ctrl+X`, then `Y`, then `Enter`)
-5. Restart Home Assistant:
+5. Restart Home Assistant and wait for it to fully restart:
    ```bash
    docker restart homeassistant
+   # Wait 3-5 minutes for full startup
    ```
 
 ---
@@ -620,15 +623,94 @@ If you don't want to use Fully Kiosk, here are simpler alternatives:
    - Uninstall Fully Kiosk
    - Reinstall and grant all permissions again
 
-### Dashboard Shows Login Screen
+### Dashboard Shows Login Screen (Still Asking for Password)
+
+This is usually caused by incorrect trusted networks configuration. Follow these steps to diagnose and fix:
+
+#### Step 1: Verify the Configuration Parameter
+
+The most common mistake is using the wrong parameter name. Check your `configuration.yaml`:
+
+```yaml
+# ❌ WRONG - will NOT work:
+allow_bypass_login: true
+
+# ✓ CORRECT - use this:
+allow_trusted_networks_bypass: true
+```
+
+**If you used the wrong parameter, edit the file:**
+```bash
+sudo nano ~/homeassistant/configuration.yaml
+```
+
+Change `allow_bypass_login` to `allow_trusted_networks_bypass`, save, and restart Home Assistant.
+
+#### Step 2: Verify Your Network Range
+
+The Fire tablet must be within the trusted network range. Find the correct range:
+
+**On your Raspberry Pi:**
+```bash
+hostname -I
+```
+
+This shows your Pi's IP. For example:
+- If your Pi IP is `192.168.1.100` → Use `192.168.1.0/24`
+- If your Pi IP is `192.168.0.100` → Use `192.168.0.0/24`
+- If your Pi IP is `10.0.0.50` → Use `10.0.0.0/24`
+
+**Check your Fire tablet's IP:**
+1. On Fire tablet, go to **Settings** → **Network**
+2. Note the IP address shown
+3. Verify the first 3 numbers match your Pi's IP
+
+For example:
+- Pi: `192.168.1.100` ✓ Tablet: `192.168.1.50` (same network)
+- Pi: `192.168.0.100` ✗ Tablet: `192.168.1.50` (different networks - won't work!)
+
+#### Step 3: Wait for Full Restart
+
+Home Assistant takes 2-5 minutes to fully restart. Don't test until after:
+
+```bash
+docker restart homeassistant
+```
+
+Then wait, and test at least 3-5 minutes later.
+
+#### Step 4: Test from Computer First
+
+Before testing on the Fire tablet, test from your computer:
+
+1. On your computer, open `http://[YOUR_PI_IP]:8123`
+2. **Without logging in**, check if it loads the dashboard
+3. If you still see a login screen on your computer, the trusted networks auth is not working
+
+#### Step 5: Check Home Assistant Logs
+
+If it's still not working, check for configuration errors:
+
+```bash
+docker logs homeassistant | grep -i trusted
+docker logs homeassistant | grep -i auth
+```
+
+Look for any errors related to `auth_providers` or `trusted_networks`.
+
+#### Step 6: Fallback - Use Long-Lived Token Instead
+
+If trusted networks still won't work, use the token method (more secure):
 
 1. **Trusted Networks**
-   - Add tablet's IP range to trusted networks
-   - Restart Home Assistant
+   - Verify parameter name is `allow_trusted_networks_bypass`
+   - Verify network range matches your tablet's network
+   - Restart Home Assistant and wait 3-5 minutes
 
-2. **Long-Lived Token**
-   - Create new token in HA profile
-   - Update Start URL with token
+2. **Long-Lived Token (Fallback)**
+   - Create new token in HA profile (see Method B above)
+   - Update Start URL with token in Fully Kiosk
+   - This always works if configured correctly
 
 ### Tablet Runs Hot
 
