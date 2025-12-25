@@ -126,14 +126,14 @@ Now download the app directly from the official website:
 1. On your Fire tablet, open the **Silk Browser** app
 2. In the address bar, type exactly: `https://www.fully-kiosk.com`
 3. Tap **Enter**
-4. Tap the **Download** link in the menu
-5. Scroll down to find "**Fully Kiosk Browser for Fire OS**"
-6. Tap **Download APK**
-7. A prompt will appear asking to download a file
-8. Tap **Download** to confirm
-9. Wait for the download to complete (you'll see a notification)
+4. Look for the **Download APK Files** box on the right side of the page (you may need to scroll down)
+5. Tap **Fully Kiosk Browser APK** (regular edition) to download
+   - There is no separate "Fire OS" version - the regular APK works on Fire tablets
+6. A prompt will appear asking to download a file
+7. Tap **Download** to confirm
+8. Wait for the download to complete (you'll see a notification)
 
-**File location:** The APK file will be saved to your Downloads folder (typically named `fully-kiosk-fire.apk` or similar).
+**File location:** The APK file will be saved to your Downloads folder (typically named `de.ozerov.fully.apk` or similar).
 
 **Official Download Link (if typing):** `https://www.fully-kiosk.com/en/#download`
 
@@ -233,41 +233,37 @@ If you have a computer and USB cable, you can install via ADB (Android Debug Bri
 
 ---
 
-### Step 2.4: Grant Permissions
+### Step 2.4: Grant Permissions (On-Demand)
 
-Now that Fully Kiosk Browser is installed (via either method above), open it and grant the required permissions. It will ask for several permissions. Here's exactly how to grant each one:
+Fully Kiosk Browser requests permissions **on-demand** as you enable features that need them, not all at once on first launch. You may see some permission prompts now, but most will appear later when you configure specific features.
 
-#### Step 2.4.1: Allow "Display Over Other Apps"
-1. When Fully Kiosk opens, it will show a popup asking for permission to "Display over other apps"
-2. Tap **Go to Settings** (or the button that opens settings)
-3. You'll see the Android settings page for "Display over other apps"
-4. Find **Fully Kiosk Browser** in the list
-5. Toggle the switch to **ON** (it will turn blue or green)
-6. Tap the **Back** button to return to Fully Kiosk
-7. If prompted again, tap **Allow**
+#### Permissions You May See Now
 
-#### Step 2.4.2: Allow "Modify System Settings"
-1. Fully Kiosk will show another popup for "Modify system settings"
-2. Tap **Go to Settings** (or similar button)
-3. You'll see the Android settings page for "Modify system settings"
-4. Find **Fully Kiosk Browser** in the list
-5. Toggle the switch to **ON**
-6. Tap the **Back** button to return to Fully Kiosk
-7. If prompted again, tap **Allow**
+**Location Access (Optional)**
+- If prompted for location access, you can tap **Deny** - this is fine for a wall-mounted display
+- Tap **Allow** only if you want location-based features
 
-#### Step 2.4.3: Allow "Access Device Location" (Optional)
-1. When prompted for location access, you can:
-   - Tap **Allow** if you want location-based features
-   - Tap **Deny** if you don't need location features (this is fine for a wall-mounted display)
+#### Permissions You'll See Later
 
-#### Step 2.4.4: Enable "Device Administrator"
-1. Fully Kiosk will ask to enable Device Administrator privileges
-2. Tap **Activate** or **Enable**
-3. Read the warning about what Device Admin can do
-4. Tap **Activate this device admin** at the bottom
-5. This allows Fully Kiosk to lock the tablet into kiosk mode
+The following permissions are requested when you enable the features that need them:
 
-**Note:** If you missed any permission prompts, you can grant them later:
+| Permission | When It's Requested |
+|------------|---------------------|
+| **Display Over Other Apps** | When you enable Kiosk Mode (Step 3.4) or Motion Detection |
+| **Modify System Settings** | When you configure screen brightness or dimming |
+| **Device Administrator** | When you enable Screen Off Timer, Remote Admin, or Scheduled Sleep |
+
+**Don't worry if you don't see all these prompts now!** They will appear at the appropriate time as you work through the configuration steps below.
+
+#### How to Grant Permissions When Prompted
+
+When a permission prompt appears:
+1. Tap **Go to Settings** (or similar button)
+2. Find **Fully Kiosk Browser** in the list
+3. Toggle the switch to **ON**
+4. Tap the **Back** button to return to Fully Kiosk
+
+**Note:** You can also grant permissions manually anytime:
 - Go to Fire tablet **Settings** → **Apps & Notifications** → **Fully Kiosk Browser** → **Permissions**
 
 ---
