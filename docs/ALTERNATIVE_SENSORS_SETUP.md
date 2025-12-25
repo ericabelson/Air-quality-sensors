@@ -223,7 +223,36 @@ The Aranet 4 is an excellent standalone CO2 monitor that broadcasts readings via
 4. Click on **Bluetooth** and follow the prompts
 5. Home Assistant will scan for Bluetooth devices
 
-### Step 3.3: Add Aranet 4
+### Step 3.3: Fix Bluetooth Permissions (Required for Docker)
+
+If you see a warning in Home Assistant Settings about "Bluetooth adapter requires additional permissions", you need to add your user to the bluetooth group:
+
+1. On your Raspberry Pi, run this command (replace `$USER` with your username if needed):
+   ```bash
+   sudo usermod -a -G bluetooth,dialout $USER
+   ```
+
+2. Log out and log back in for the changes to take effect:
+   ```bash
+   logout
+   ```
+
+3. Log back in via SSH
+
+4. Restart the Home Assistant container:
+   ```bash
+   docker restart homeassistant
+   ```
+
+5. Wait 1-2 minutes for Home Assistant to fully restart
+
+6. Go back to **Settings** → **Devices & Services** in Home Assistant
+
+7. The Bluetooth permission warning should now be gone, and you should see a "Repair" option - click **Configure** or the repair should auto-resolve
+
+**Note:** This step is required because the Docker container needs your user account to have proper permissions to access the Bluetooth hardware (`hci0` adapter) on the host system.
+
+### Step 3.4: Add Aranet 4
 
 Home Assistant should automatically discover your Aranet 4:
 
@@ -240,7 +269,7 @@ Home Assistant should automatically discover your Aranet 4:
 4. The integration will scan for nearby devices
 5. Select your Aranet 4 from the list
 
-### Step 3.4: Verify Sensors
+### Step 3.5: Verify Sensors
 
 After adding, go to **Settings** → **Devices & Services** → **Aranet4**:
 
@@ -251,7 +280,7 @@ You should see these entities:
 - `sensor.aranet4_xxxx_pressure` - Pressure
 - `sensor.aranet4_xxxx_battery` - Battery level
 
-### Step 3.5: Rename for Clarity (Optional)
+### Step 3.6: Rename for Clarity (Optional)
 
 1. Click on each sensor entity
 2. Click the gear icon
