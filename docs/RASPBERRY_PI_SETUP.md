@@ -701,6 +701,46 @@ source venv/bin/activate
 # Now your prompt should show: (venv) pi@utsensing:~/Air-quality-sensors $
 ```
 
+### Problem: Security verification checks fail
+
+**Symptom:** One or more commands in Step 8.5 don't show expected results
+
+**Solutions by component:**
+
+**Firewall not active:**
+```bash
+sudo ufw enable
+sudo ufw allow 22/tcp
+sudo ufw status
+```
+
+**Fail2ban not running:**
+```bash
+sudo systemctl enable fail2ban
+sudo systemctl start fail2ban
+sudo fail2ban-client status sshd
+```
+
+**Automatic updates not enabled:**
+```bash
+sudo systemctl enable unattended-upgrades
+sudo systemctl start unattended-upgrades
+```
+
+**Unexpected cron jobs found:**
+```bash
+# View the suspicious cron job
+sudo crontab -u [username] -l
+
+# Remove if unauthorized
+sudo crontab -u [username] -r
+```
+
+**SSH key login not working:**
+- See [WINDOWS_SSH_SETUP.md](WINDOWS_SSH_SETUP.md#troubleshooting) for detailed SSH key troubleshooting
+- Check permissions: `chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`
+- Verify key is in authorized_keys: `cat ~/.ssh/authorized_keys`
+
 ---
 
 ## Part 8: Security Hardening (Recommended)
@@ -755,6 +795,111 @@ sudo bash security-hardening.sh
 
 **IMPORTANT:** After running the script, open a NEW terminal and verify you can still SSH in before closing your current session.
 
+### Step 8.2.1: Verify Security Script Completed Successfully
+
+After the security hardening script finishes, run these verification commands:
+
+```bash
+# Verify firewall is active and configured
+sudo ufw status
+```
+
+**Expected output:**
+```
+Status: active
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     LIMIT       Anywhere
+22/tcp (v6)                LIMIT       Anywhere (v6)
+```
+
+```bash
+# Verify fail2ban is running and protecting SSH
+sudo fail2ban-client status sshd
+```
+
+**Expected output:**
+```
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed: 0
+|  |- Total failed:     0
+|  `- Journal matches:  _SYSTEMD_UNIT=sshd.service
+`- Actions
+   |- Currently banned: 0
+   |- Total banned:     0
+   `- Banned IP list:
+```
+
+```bash
+# Verify automatic security updates are enabled
+sudo systemctl status unattended-upgrades
+```
+
+**Expected output:**
+```
+● unattended-upgrades.service - Unattended Upgrades Shutdown
+     Loaded: loaded (/lib/systemd/system/unattended-upgrades.service; enabled; preset: enabled)
+     Active: active (running) since ...
+```
+
+### Step 8.2.2: Check for Old Cron Jobs
+
+Verify no old or unauthorized scheduled tasks are running:
+
+```bash
+# Check cron jobs for all common users
+sudo crontab -u demeter -l 2>/dev/null || echo "No crontab for demeter"
+sudo crontab -u pi -l 2>/dev/null || echo "No crontab for pi"
+sudo crontab -u root -l 2>/dev/null || echo "No crontab for root"
+```
+
+**Expected output:**
+```
+No crontab for demeter
+No crontab for pi
+```
+
+Root may have system maintenance tasks - that's normal. Just verify there are no unexpected entries pointing to external servers.
+
+### Step 8.2.3: Disable Password Authentication (After SSH Keys Work)
+
+**ONLY do this after confirming SSH key login works!**
+
+If you successfully set up SSH keys in Step 8.1, now disable password authentication:
+
+```bash
+# Edit the SSH security hardening configuration
+sudo nano /etc/ssh/sshd_config.d/security-hardening.conf
+```
+
+Find this line:
+```
+# PasswordAuthentication no
+```
+
+Uncomment it (remove the `#`):
+```
+PasswordAuthentication no
+```
+
+Save and exit: `Ctrl+X`, then `Y`, then `Enter`
+
+Restart SSH service:
+```bash
+sudo systemctl restart sshd
+```
+
+**CRITICAL:** Open a NEW PowerShell/terminal window and test SSH login BEFORE closing your current session:
+
+```bash
+ssh demeter@192.168.68.116
+# Should connect using SSH key without asking for password!
+```
+
+If the new connection works, your Pi now only accepts SSH keys. If it fails, you can fix it from your current still-open session.
+
 ### Step 8.3: Enable Home Assistant 2FA
 
 1. Log into Home Assistant at `http://[YOUR_PI_IP]:8123`
@@ -765,19 +910,71 @@ sudo bash security-hardening.sh
 
 ### Step 8.4: Network Segmentation (Recommended)
 
-If your router supports it, put the Raspberry Pi on a separate network:
+Isolate your Raspberry Pi on a separate network to protect your computers and phones from potential IoT device vulnerabilities.
+
+**For TP-Link Deco M9 Plus Users (Quick Steps):**
+
+1. Open the **Deco app** on your phone
+2. Tap **More** → **Guest Network**
+3. Enable Guest Network and name it **"IoT-Devices"**
+4. **IMPORTANT:** Ensure **Guest Network Isolation is ON**
+5. Note the WiFi password
+6. On your Raspberry Pi, reconnect to the "IoT-Devices" network:
+   ```bash
+   sudo raspi-config
+   # Navigate to: System Options → Wireless LAN
+   # Enter SSID: IoT-Devices
+   # Enter password: [your guest network password]
+   ```
+7. Reboot: `sudo reboot`
+
+**For Other Routers:**
 
 - Use your router's "Guest Network" or "IoT Network" feature
-- This isolates the Pi from your computers and phones
-- See [SECURITY.md](SECURITY.md#network-segmentation) for detailed instructions
+- Ensure guest network isolation is enabled
+- See [SECURITY.md](SECURITY.md#network-segmentation) for detailed instructions for other router brands
 
-For **TP-Link Deco M9 Plus** users: See the dedicated section in [SECURITY.md](SECURITY.md#tp-link-deco-m9-plus-setup).
+### Step 8.5: Complete Security Verification Checklist
+
+Run through this final checklist to confirm everything is secured:
+
+```bash
+# 1. Verify firewall is active
+sudo ufw status | grep "Status: active"
+
+# 2. Verify fail2ban is protecting SSH
+sudo fail2ban-client status sshd | grep "Currently banned"
+
+# 3. Verify automatic updates enabled
+sudo systemctl is-enabled unattended-upgrades
+
+# 4. Verify no unexpected cron jobs
+sudo crontab -u demeter -l 2>/dev/null || echo "✓ No crontab for demeter"
+sudo crontab -u pi -l 2>/dev/null || echo "✓ No crontab for pi"
+
+# 5. Verify SSH key authentication works
+# (Test from a NEW terminal window on your computer)
+
+# 6. Verify password authentication is disabled (if you set it up)
+sudo grep "^PasswordAuthentication no" /etc/ssh/sshd_config.d/security-hardening.conf
+```
+
+**Expected Results:**
+- ✅ Firewall: Status: active
+- ✅ Fail2ban: Currently banned: 0 (service is running)
+- ✅ Auto-updates: enabled
+- ✅ Cron jobs: No unexpected entries
+- ✅ SSH keys: Can connect without password
+- ✅ Password auth: Disabled (shows "PasswordAuthentication no")
+
+If all checks pass, your Raspberry Pi is properly secured!
 
 ### Security Resources
 
 For complete security documentation, see:
 - [SECURITY.md](SECURITY.md) - Full security guide with network segmentation
 - [REMOTE_ACCESS.md](REMOTE_ACCESS.md) - Secure remote access options
+- [WINDOWS_SSH_SETUP.md](WINDOWS_SSH_SETUP.md) - Detailed SSH key setup for Windows
 
 ---
 
@@ -793,13 +990,84 @@ Congratulations! Your air quality monitor is now running!
 
 ---
 
+## Quick Reference: Common Commands
+
+**SSH Connection:**
+```bash
+# From Windows PowerShell or Mac/Linux Terminal
+ssh demeter@192.168.68.116
+```
+
+**Activate Virtual Environment:**
+```bash
+cd ~/Air-quality-sensors
+source venv/bin/activate
+```
+
+**Check Sensor Service:**
+```bash
+# Check if running
+sudo systemctl status utsensing
+
+# View live logs
+journalctl -u utsensing -f
+
+# Restart service
+sudo systemctl restart utsensing
+```
+
+**View Sensor Data:**
+```bash
+# List data folders
+ls -la /home/utsensing/utData/raw/
+
+# View latest readings (JSON format)
+cat /home/utsensing/utData/raw/*/BME680.json
+cat /home/utsensing/utData/raw/*/SCD30.json
+```
+
+**Security Checks:**
+```bash
+# Firewall status
+sudo ufw status
+
+# Fail2ban status
+sudo fail2ban-client status sshd
+
+# Check for unauthorized cron jobs
+sudo crontab -u demeter -l 2>/dev/null || echo "No crontab"
+```
+
+**Update Repository:**
+```bash
+cd ~/Air-quality-sensors
+git pull origin main
+```
+
+**Home Assistant:**
+```bash
+# Access dashboard
+http://192.168.68.116:8123
+
+# Check container status
+docker ps
+
+# View logs
+docker logs homeassistant
+```
+
+---
+
 ## Getting Help
 
 If you encounter issues:
 
 1. Check the [Troubleshooting](#troubleshooting) section above
 2. Review the logs: `journalctl -u utsensing -n 100`
-3. Open an issue on GitHub with:
+3. Run security verification checklist (Step 8.5)
+4. Verify virtual environment is activated: `which python3` should show path with `venv`
+5. Open an issue on GitHub with:
    - Your error message
    - Output of `sudo systemctl status utsensing`
    - Output of `ls /dev/ttyUSB*`
+   - Output of security verification commands
