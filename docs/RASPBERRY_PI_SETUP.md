@@ -24,7 +24,8 @@ This guide takes you from an unboxed Raspberry Pi 4 and sensor kit to a fully fu
 6. [Part 5: Test Everything](#part-5-test-everything)
 7. [Part 6: Set Up Auto-Start](#part-6-set-up-auto-start)
 8. [Part 7: Install Home Assistant Dashboard](#part-7-install-home-assistant-dashboard)
-9. [Troubleshooting](#troubleshooting)
+9. [Part 8: Security Hardening](#part-8-security-hardening-recommended) (Recommended)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -601,6 +602,68 @@ sudo usermod -a -G dialout pi
 
 ---
 
+## Part 8: Security Hardening (Recommended)
+
+Your Raspberry Pi is a computer on your network. Take a few minutes to secure it.
+
+### Step 8.1: Run the Security Hardening Script
+
+We provide a script that automatically configures security best practices:
+
+```bash
+cd ~/Air-quality-sensors/scripts
+chmod +x security-hardening.sh
+sudo bash security-hardening.sh
+```
+
+This script will:
+- Configure SSH hardening (disable root, limit attempts)
+- Install fail2ban (blocks brute-force attacks)
+- Set up UFW firewall (blocks unauthorized access)
+- Enable automatic security updates
+
+**IMPORTANT:** After running the script, open a NEW terminal and verify you can still SSH in before closing your current session.
+
+### Step 8.2: Set Up SSH Key Authentication (Recommended)
+
+SSH keys are more secure than passwords:
+
+**On your computer (not the Pi):**
+
+```bash
+# Generate SSH key
+ssh-keygen -t ed25519 -C "air-quality-pi"
+
+# Copy to your Pi
+ssh-copy-id pi@[YOUR_PI_IP]
+```
+
+### Step 8.3: Enable Home Assistant 2FA
+
+1. Log into Home Assistant at `http://[YOUR_PI_IP]:8123`
+2. Click your username (bottom left of sidebar)
+3. Scroll to **Multi-factor Authentication Modules**
+4. Click **Enable** next to **Totp**
+5. Scan QR code with authenticator app (Google Authenticator, Authy, etc.)
+
+### Step 8.4: Network Segmentation (Recommended)
+
+If your router supports it, put the Raspberry Pi on a separate network:
+
+- Use your router's "Guest Network" or "IoT Network" feature
+- This isolates the Pi from your computers and phones
+- See [SECURITY.md](SECURITY.md#network-segmentation) for detailed instructions
+
+For **TP-Link Deco M9 Plus** users: See the dedicated section in [SECURITY.md](SECURITY.md#tp-link-deco-m9-plus-setup).
+
+### Security Resources
+
+For complete security documentation, see:
+- [SECURITY.md](SECURITY.md) - Full security guide with network segmentation
+- [REMOTE_ACCESS.md](REMOTE_ACCESS.md) - Secure remote access options
+
+---
+
 ## Next Steps
 
 Congratulations! Your air quality monitor is now running!
@@ -609,6 +672,7 @@ Congratulations! Your air quality monitor is now running!
 - [Understand sensor data](SENSOR_INTERPRETATION.md)
 - [Configure a Fire tablet display](FIRE_TABLET_SETUP.md)
 - [Access your dashboard remotely](REMOTE_ACCESS.md) - View your air quality data from anywhere
+- [Secure your installation](SECURITY.md) - Protect your network (highly recommended)
 
 ---
 

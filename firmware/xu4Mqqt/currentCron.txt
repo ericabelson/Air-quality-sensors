@@ -1,5 +1,18 @@
-@reboot cd /home/utsensing/gitHubRepos/UTSensing/firmware/xu4Mqqt && ./runAll.sh
-*/10 * * * * cd /home/utsensing/gitHubRepos/UTSensing/firmware/xu4Mqqt && ./runAll.sh
-*/1 * * * * rsync -avzrtu -e "ssh -p 2222" /home/utsensing/utData/raw/ mints@mintsdata.utdallas.edu:/home/mints/raw/
+# UTSensing Air Quality Monitor - Cron Configuration
+#
+# These cron jobs run the sensor reading scripts automatically.
+# Edit with: crontab -e
+#
+# NOTE: External data sync to UT Dallas has been removed for privacy/security.
+# All data stays local on your Raspberry Pi.
+
+# Start sensor reading on boot
+@reboot cd /home/pi/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
+
+# Restart sensor reading every 10 minutes (in case of crashes)
+*/10 * * * * cd /home/pi/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
+
+# Optional: Local backup to USB drive (uncomment and modify path if desired)
+# */30 * * * * rsync -av /home/utsensing/utData/raw/ /media/pi/BACKUP_USB/utsensing-backup/
 
 

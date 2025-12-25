@@ -363,12 +363,66 @@ Simply bookmark your remote URL in your phone's browser for quick access.
 
 ## Security Considerations
 
-All three solutions are secure, but keep these tips in mind:
+**IMPORTANT:** Before enabling remote access, complete the security hardening steps in [SECURITY.md](SECURITY.md).
 
-1. **Use strong passwords** for your Home Assistant account
-2. **Enable two-factor authentication** in Home Assistant (Settings → Profile → Multi-factor Authentication)
-3. **Keep software updated** - regularly run `docker pull ghcr.io/home-assistant/home-assistant:stable`
-4. **Review access logs** periodically in Home Assistant
+### Required Security Steps
+
+Complete these before enabling remote access:
+
+1. **Run the security hardening script:**
+   ```bash
+   cd ~/Air-quality-sensors/scripts
+   sudo bash security-hardening.sh
+   ```
+
+2. **Enable two-factor authentication** in Home Assistant:
+   - Settings → Profile → Multi-factor Authentication
+   - Use an authenticator app (Google Authenticator, Authy, etc.)
+
+3. **Use strong, unique passwords:**
+   - At least 16 characters
+   - Mix of letters, numbers, symbols
+   - Use a password manager
+
+4. **Set up SSH key authentication:**
+   ```bash
+   # On your computer
+   ssh-keygen -t ed25519 -C "air-quality-pi"
+   ssh-copy-id your-user@your-pi-ip
+   ```
+
+### Recommended Security Steps
+
+5. **Network segmentation:**
+   - Put Pi on a separate IoT/Guest network
+   - See [SECURITY.md](SECURITY.md#network-segmentation)
+
+6. **Keep software updated:**
+   ```bash
+   docker pull ghcr.io/home-assistant/home-assistant:stable
+   docker stop homeassistant && docker rm homeassistant
+   # Re-run docker command from setup guide
+   ```
+
+7. **Review access logs periodically:**
+   - Home Assistant: Settings → System → Logs
+   - SSH: `sudo grep "Failed password" /var/log/auth.log`
+
+### Security Ranking of Remote Access Options
+
+| Method | Security | Why |
+|--------|----------|-----|
+| **Tailscale** | Excellent | Zero-config VPN, no exposed ports, WireGuard encryption |
+| **Cloudflare Tunnel** | Excellent | No exposed ports, DDoS protection, requires domain |
+| **Home Assistant Cloud** | Very Good | Managed service, supports 2FA, easy setup |
+| **Port Forwarding** | POOR | Exposes Pi directly to internet - **NEVER DO THIS** |
+
+### What NOT to Do
+
+- **NEVER port forward** ports 22 (SSH) or 8123 (Home Assistant) directly to the internet
+- **NEVER disable** firewall for "convenience"
+- **NEVER share** credentials publicly (GitHub issues, forums, etc.)
+- **NEVER skip** 2FA setup for remote access
 
 ---
 
