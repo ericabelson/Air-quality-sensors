@@ -4,9 +4,23 @@ Transform an Amazon Fire tablet into a dedicated air quality display that shows 
 
 **Time Required:** 30-60 minutes
 **Cost:** Fire HD 8 ($50-100) or Fire HD 10 ($80-150)
-**Prerequisites:** Home Assistant running with UTSensing sensors configured
+**Prerequisites:** Home Assistant running with UTSensing sensors configured (see below)
 
 **For technical details:** See [Technical Reference Appendix](TECHNICAL_REFERENCE.md) for Fully Kiosk Browser official download links and ADB installation guides
+
+---
+
+## IMPORTANT: What is Home Assistant?
+
+**Home Assistant** is free, open-source software that creates a dashboard to display your sensor data. It runs on your Raspberry Pi and provides a web interface you can view from any device.
+
+**You MUST set up Home Assistant BEFORE following this guide.** The Fire tablet is just a dedicated screen to display your Home Assistant dashboard.
+
+### Complete This First:
+1. Follow the [Raspberry Pi Setup Guide](RASPBERRY_PI_SETUP.md) to set up your Pi
+2. Follow the [Home Assistant Setup Guide](HOME_ASSISTANT_SETUP.md) to install and configure Home Assistant with your sensors
+
+Once Home Assistant is running and showing your sensor data at `http://[YOUR_PI_IP]:8123`, you're ready to continue with this guide.
 
 ---
 
@@ -211,14 +225,42 @@ If you have a computer and USB cable, you can install via ADB (Android Debug Bri
    - Look for "Success" message in terminal
    - On tablet, check app drawer for Fully Kiosk Browser icon
 
-### Step 2.2: Grant Permissions
+### Step 2.4: Grant Permissions
 
-When you first open Fully Kiosk:
+When you first open Fully Kiosk Browser, it will ask for several permissions. Here's exactly how to grant each one:
 
-1. Allow **Display over other apps**
-2. Allow **Modify system settings**
-3. Allow **Access device location** (optional)
-4. Enable **Device Admin** when prompted (for kiosk mode)
+#### Step 2.4.1: Allow "Display Over Other Apps"
+1. When Fully Kiosk opens, it will show a popup asking for permission to "Display over other apps"
+2. Tap **Go to Settings** (or the button that opens settings)
+3. You'll see the Android settings page for "Display over other apps"
+4. Find **Fully Kiosk Browser** in the list
+5. Toggle the switch to **ON** (it will turn blue or green)
+6. Tap the **Back** button to return to Fully Kiosk
+7. If prompted again, tap **Allow**
+
+#### Step 2.4.2: Allow "Modify System Settings"
+1. Fully Kiosk will show another popup for "Modify system settings"
+2. Tap **Go to Settings** (or similar button)
+3. You'll see the Android settings page for "Modify system settings"
+4. Find **Fully Kiosk Browser** in the list
+5. Toggle the switch to **ON**
+6. Tap the **Back** button to return to Fully Kiosk
+7. If prompted again, tap **Allow**
+
+#### Step 2.4.3: Allow "Access Device Location" (Optional)
+1. When prompted for location access, you can:
+   - Tap **Allow** if you want location-based features
+   - Tap **Deny** if you don't need location features (this is fine for a wall-mounted display)
+
+#### Step 2.4.4: Enable "Device Administrator"
+1. Fully Kiosk will ask to enable Device Administrator privileges
+2. Tap **Activate** or **Enable**
+3. Read the warning about what Device Admin can do
+4. Tap **Activate this device admin** at the bottom
+5. This allows Fully Kiosk to lock the tablet into kiosk mode
+
+**Note:** If you missed any permission prompts, you can grant them later:
+- Go to Fire tablet **Settings** → **Apps & Notifications** → **Fully Kiosk Browser** → **Permissions**
 
 ---
 
@@ -239,45 +281,110 @@ Replace `[YOUR_PI_IP]` with your Raspberry Pi's IP address.
 
 Example: `http://192.168.1.100:8123/lovelace/tablet`
 
-### Step 3.2: Configure Auto-Login (Important!)
+### Step 3.2: Configure Fully Kiosk Browser Settings
 
-Home Assistant requires login. To auto-login:
+Before connecting to Home Assistant, configure these basic settings in Fully Kiosk:
 
-1. In Fully Kiosk, go to **Settings** → **Web Content Settings**
-2. Enable **Autoplay Videos**
-3. Enable **Enable JavaScript**
-4. Enable **Load Links in Same Tab**
+#### Step 3.2.1: Enable Required Browser Settings
+1. In Fully Kiosk, tap the menu (three lines, top-right)
+2. Go to **Settings** → **Web Content Settings**
+3. Enable **Autoplay Videos** (toggle to ON)
+4. Enable **Enable JavaScript** (toggle to ON)
+5. Enable **Load Links in Same Tab** (toggle to ON)
+6. Tap **Back** to save
 
-**Create a Long-Lived Access Token:**
+### Step 3.3: Configure Auto-Login to Home Assistant
 
-1. On your computer, open Home Assistant
-2. Click your user profile (bottom left)
-3. Scroll to **Long-Lived Access Tokens**
-4. Click **Create Token**
-5. Name it "Fire Tablet"
-6. Copy the token (you can only see it once!)
+Home Assistant requires you to log in. Since you don't want to log in every time on a wall display, you need to set up automatic authentication. Choose ONE of the two methods below:
 
-**Use Token in URL:**
+---
 
-Update your Start URL to:
-```
-http://[YOUR_PI_IP]:8123/lovelace/tablet?auth_callback=1&access_token=[YOUR_TOKEN]
-```
+#### Method A: Trusted Networks (Easier - Recommended)
 
-Or set up trusted networks in Home Assistant (easier):
+This method tells Home Assistant to automatically trust any device on your home network.
 
-Edit Home Assistant `configuration.yaml`:
+##### Step 3.3.1: Access Home Assistant on Your Computer
+1. On your computer (not the tablet), open a web browser
+2. Go to `http://[YOUR_PI_IP]:8123`
+   - Replace `[YOUR_PI_IP]` with your Raspberry Pi's IP address
+   - Example: `http://192.168.1.100:8123`
+3. Log in with your Home Assistant username and password (the one you created during [Home Assistant Setup](HOME_ASSISTANT_SETUP.md))
+
+##### Step 3.3.2: Edit the Configuration File
+1. In Home Assistant, click **Settings** in the left sidebar
+2. Click **Add-ons** (if using Home Assistant OS) or access your Pi via SSH
+3. You need to edit the file `configuration.yaml` on your Raspberry Pi
+4. Add the following to the file:
+
 ```yaml
 homeassistant:
   auth_providers:
     - type: trusted_networks
       trusted_networks:
-        - 192.168.1.0/24  # Your local network
+        - 192.168.1.0/24  # Your local network - adjust if different
       allow_bypass_login: true
     - type: homeassistant
 ```
 
-### Step 3.3: Enable Kiosk Mode
+**Note:** Change `192.168.1.0/24` to match your network. If your Pi's IP is `192.168.0.100`, use `192.168.0.0/24`.
+
+##### Step 3.3.3: Restart Home Assistant
+1. In Home Assistant, go to **Settings** → **System** → **Restart**
+2. Click **Restart** and wait 1-2 minutes for it to come back up
+3. Now any device on your home network can access Home Assistant without logging in
+
+---
+
+#### Method B: Long-Lived Access Token (More Secure)
+
+This method creates a special password (token) embedded in the URL. More secure but slightly more complex.
+
+##### Step 3.3.1: Open Home Assistant on Your Computer
+1. On your computer (not the tablet), open a web browser
+2. Go to `http://[YOUR_PI_IP]:8123`
+   - Replace `[YOUR_PI_IP]` with your Raspberry Pi's IP address
+   - Example: `http://192.168.1.100:8123`
+3. Log in with your Home Assistant username and password
+
+##### Step 3.3.2: Navigate to Your User Profile
+1. Look at the bottom-left corner of Home Assistant
+2. Click on your **username** or the **person icon**
+3. This opens your User Profile page
+
+##### Step 3.3.3: Create a Long-Lived Access Token
+1. Scroll down to the **Long-Lived Access Tokens** section
+2. Click **Create Token**
+3. Enter a name: `Fire Tablet`
+4. Click **OK** or **Create**
+5. **IMPORTANT:** A token will appear. Copy it immediately!
+6. Save this token somewhere safe - you can only see it once!
+
+Example token (yours will be different):
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI...
+```
+
+##### Step 3.3.4: Update the Start URL in Fully Kiosk
+1. Go back to Fully Kiosk on your tablet
+2. Go to **Settings** → **Web Content Settings**
+3. Update the **Start URL** to include the token:
+
+```
+http://[YOUR_PI_IP]:8123/lovelace/tablet?auth_callback=1&access_token=[YOUR_TOKEN]
+```
+
+Replace:
+- `[YOUR_PI_IP]` with your Raspberry Pi's IP (e.g., `192.168.1.100`)
+- `[YOUR_TOKEN]` with the token you copied
+
+Example:
+```
+http://192.168.1.100:8123/lovelace/tablet?auth_callback=1&access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI...
+```
+
+---
+
+### Step 3.4: Enable Kiosk Mode
 
 1. Go to **Settings** → **Kiosk Mode**
 2. Enable **Enable Kiosk Mode**
@@ -289,7 +396,7 @@ homeassistant:
    - **Disable Volume Buttons** (optional)
    - **Disable Power Button** (optional, use carefully)
 
-### Step 3.4: Configure Screen Behavior
+### Step 3.5: Configure Screen Behavior
 
 1. Go to **Settings** → **Device Management**
 2. **Keep Screen On**: Enable
@@ -303,7 +410,7 @@ homeassistant:
 3. Set schedule (e.g., 22:00-07:00)
 4. Set night brightness (e.g., 10%)
 
-### Step 3.5: Motion Detection (Optional)
+### Step 3.6: Motion Detection (Optional)
 
 Enable motion-activated screen:
 
