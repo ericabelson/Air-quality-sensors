@@ -310,21 +310,198 @@ Door and window sensors help you understand ventilation and security. There are 
 **Best for:** Users who want longer range and more reliable connections
 
 **What you need:**
-- Z-Wave USB stick (like Aeotec Z-Stick Gen5 - ~$45)
+- Z-Wave USB stick (like Aeotec Z-Stick Gen5+ or Zooz ZST10 700 - ~$35-45)
 - Z-Wave door sensors (~$30-40 each)
 
-#### Step B.1: Install Z-Wave Integration
+**Important:** Z-Wave setup for Docker-based Home Assistant requires running a separate Z-Wave JS server. This is different from Home Assistant OS where it's handled by an add-on.
 
-1. Plug in Z-Wave USB stick
-2. In Home Assistant: **Settings** → **Devices & Services** → **+ Add Integration**
-3. Search for "**Z-Wave**" and select "Z-Wave JS"
-4. Follow setup wizard
+#### Step B.1: Identify Your Z-Wave USB Stick
 
-#### Step B.2: Pair Sensors
+1. Plug the Z-Wave USB stick into your Raspberry Pi
 
-1. Go to Z-Wave integration
-2. Click **Add Node**
-3. Follow sensor-specific pairing instructions
+2. Find the device path:
+   ```bash
+   # List USB serial devices
+   ls -la /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
+
+   # Or check dmesg for the device
+   dmesg | grep -i "tty" | tail -10
+   ```
+
+   Common paths:
+   - `/dev/ttyUSB0` - Most common for FTDI-based sticks
+   - `/dev/ttyACM0` - Common for newer sticks (Aeotec Gen5+, Zooz)
+
+3. Get the device ID for a stable path (recommended):
+   ```bash
+   ls -la /dev/serial/by-id/
+   ```
+
+   You'll see something like:
+   ```
+   usb-Silicon_Labs_Zooz_ZST10_700_0001-if00-port0 -> ../../ttyUSB0
+   ```
+
+   Use `/dev/serial/by-id/usb-Silicon_Labs_...` as your device path - this won't change if you plug in other USB devices.
+
+#### Step B.2: Stop Home Assistant and Add USB Device Access
+
+1. Stop the current Home Assistant container:
+   ```bash
+   docker stop homeassistant
+   docker rm homeassistant
+   ```
+
+2. Restart Home Assistant with the Z-Wave USB device:
+   ```bash
+   docker run -d \
+     --name homeassistant \
+     --privileged \
+     --restart=unless-stopped \
+     -e TZ=America/Chicago \
+     -v ~/homeassistant:/config \
+     -v /run/dbus:/run/dbus:ro \
+     --device=/dev/ttyUSB0:/dev/ttyUSB0 \
+     --network=host \
+     ghcr.io/home-assistant/home-assistant:stable
+   ```
+
+   **Note:** Replace `/dev/ttyUSB0` with your actual device path from Step B.1.
+
+#### Step B.3: Install Z-Wave JS UI (Recommended Method)
+
+Z-Wave JS UI (formerly zwavejs2mqtt) provides both the Z-Wave JS server and a management interface.
+
+1. Create a directory for Z-Wave JS configuration:
+   ```bash
+   mkdir -p ~/zwavejs
+   ```
+
+2. Start the Z-Wave JS UI container:
+   ```bash
+   docker run -d \
+     --name zwavejs \
+     --restart=unless-stopped \
+     -p 8091:8091 \
+     -p 3000:3000 \
+     -v ~/zwavejs:/usr/src/app/store \
+     --device=/dev/ttyUSB0:/dev/zwave \
+     -e TZ=America/Chicago \
+     zwavejs/zwave-js-ui:latest
+   ```
+
+   **Note:** Replace `/dev/ttyUSB0` with your actual device path.
+
+3. Wait 1-2 minutes for the container to start, then open the Z-Wave JS UI:
+   ```
+   http://airquality.local:8091
+   ```
+   Or use your Pi's IP: `http://192.168.x.x:8091`
+
+4. Configure Z-Wave JS UI:
+   - Go to **Settings** → **Z-Wave**
+   - Set **Serial Port** to `/dev/zwave`
+   - Leave other settings at defaults
+   - Click **Save** at the bottom
+   - The status should change to "Driver: Ready"
+
+#### Step B.4: Connect Home Assistant to Z-Wave JS
+
+1. In Home Assistant, go to **Settings** → **Devices & Services**
+
+2. Click **+ Add Integration**
+
+3. Search for "**Z-Wave**" - you should see:
+   - ✅ **Z-Wave** (this is the correct one - it connects to Z-Wave JS)
+
+   **Note:** Do NOT look for "Z-Wave JS" - the integration is simply called "Z-Wave"
+
+4. When prompted for the server URL, enter:
+   ```
+   ws://localhost:3000
+   ```
+
+   (This connects to the Z-Wave JS UI websocket server you started in Step B.3)
+
+5. Click **Submit** - Home Assistant will connect to your Z-Wave network
+
+6. You should see your Z-Wave USB stick appear as a device (the controller)
+
+#### Step B.5: Pair Z-Wave Door/Window Sensors
+
+1. In Home Assistant, go to **Settings** → **Devices & Services** → **Z-Wave**
+
+2. Click on the Z-Wave integration, then click **Configure**
+
+3. Click **Add Device** (this puts the controller in inclusion mode)
+
+4. Put your door sensor in pairing mode:
+
+   **Aeotec Door/Window Sensor:**
+   - Remove the cover
+   - Press the button inside once
+   - LED will blink rapidly when in pairing mode
+
+   **Ecolink Door/Window Sensor:**
+   - Remove the battery
+   - Reinsert the battery while holding the button
+   - Release button after 1 second
+
+   **Zooz ZSE41 Open/Close Sensor:**
+   - Press the button on the sensor 3 times quickly
+
+   **Generic Z-Wave Sensors:**
+   - Usually: press the button 3 times quickly, or hold for 3 seconds
+   - Check your sensor's manual for specific instructions
+
+5. Home Assistant will discover the sensor (may take 10-30 seconds)
+
+6. Once discovered, give it a meaningful name like "Front Door" or "Kitchen Window"
+
+#### Step B.6: Verify Sensors are Working
+
+1. Go to **Settings** → **Devices & Services** → **Z-Wave**
+
+2. Click on your newly added sensor device
+
+3. You should see entities like:
+   - `binary_sensor.front_door_access_control_door_state` - Open/Closed status
+   - `sensor.front_door_battery` - Battery level
+   - Possibly temperature if your sensor has that feature
+
+4. Test by opening and closing the door/window - the state should update within 1-2 seconds
+
+#### Troubleshooting Z-Wave
+
+**"Z-Wave" integration not found:**
+- Make sure you're searching for just "Z-Wave", not "Z-Wave JS"
+- Restart Home Assistant if you just added the USB device
+
+**Can't connect to Z-Wave JS server:**
+- Check Z-Wave JS UI container is running: `docker ps | grep zwavejs`
+- Check logs: `docker logs zwavejs`
+- Verify port 3000 is accessible: `curl http://localhost:3000`
+
+**USB device not found in container:**
+- Verify device exists: `ls -la /dev/ttyUSB0`
+- Check device permissions: `sudo chmod 666 /dev/ttyUSB0`
+- Try using the `/dev/serial/by-id/` path instead
+
+**Sensor won't pair:**
+- Factory reset the sensor (usually hold button 10+ seconds)
+- Move sensor closer to the USB stick during pairing
+- Try excluding then re-including (in Z-Wave JS UI: Settings → Actions → Exclude)
+- Some sensors need to be awake during pairing - keep pressing button
+
+**Z-Wave JS UI shows "Driver: Not Ready":**
+- Wrong serial port - check Settings → Z-Wave → Serial Port
+- USB stick not properly passed to container
+- Try unplugging and replugging the USB stick, then restart the container
+
+**Entities show "Unavailable":**
+- Battery-powered devices sleep to save power
+- Wake the device by pressing its button
+- Wait for the device to report (can take a few minutes)
 
 ### Option C: WiFi Sensors (ESP-based)
 
