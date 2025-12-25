@@ -358,7 +358,7 @@ homeassistant:
 1. SSH into your Raspberry Pi (see [Raspberry Pi Setup](RASPBERRY_PI_SETUP.md) for SSH instructions)
 2. Edit the configuration file:
    ```bash
-   nano ~/homeassistant/configuration.yaml
+   sudo nano ~/homeassistant/configuration.yaml
    ```
 3. Add the following to the file:
 
