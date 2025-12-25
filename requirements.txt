@@ -11,6 +11,9 @@ PyYAML>=6.0             # YAML configuration files
 # MQTT communication
 paho-mqtt>=1.6.0        # MQTT client for Home Assistant integration
 
+# HTTP requests
+requests>=2.28.0        # HTTP library for IP detection and API calls
+
 # Data processing
 numpy>=1.21.0           # Numerical computations (optional, for advanced analytics)
 
