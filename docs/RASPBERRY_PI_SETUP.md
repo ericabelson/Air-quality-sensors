@@ -90,6 +90,8 @@ Configure wireless LAN: [enter your WiFi name and password]
 Set locale settings: [your timezone]
 ```
 
+> **Note about Raspberry Pi Connect:** The Raspberry Pi Imager may offer to enable "Raspberry Pi Connect" - a remote access service from Raspberry Pi. **You do not need to enable this** for the air quality monitor. Pi Connect provides terminal/desktop access to your Pi but does not help with viewing your sensor dashboard remotely. If you want to access your dashboard from outside your home network, see [Remote Access Guide](REMOTE_ACCESS.md) for better options.
+
 9. Click **"Save"**
 10. Click **"Write"**
 11. Wait for the process to complete (5-10 minutes)
@@ -606,6 +608,7 @@ Congratulations! Your air quality monitor is now running!
 - [Set up the dashboard](HOME_ASSISTANT_SETUP.md)
 - [Understand sensor data](SENSOR_INTERPRETATION.md)
 - [Configure a Fire tablet display](FIRE_TABLET_SETUP.md)
+- [Access your dashboard remotely](REMOTE_ACCESS.md) - View your air quality data from anywhere
 
 ---
 

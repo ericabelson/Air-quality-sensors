@@ -190,6 +190,7 @@ See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md)
 | [RASPBERRY_PI_SETUP.md](docs/RASPBERRY_PI_SETUP.md) | Complete step-by-step Raspberry Pi 4 setup |
 | [SENSOR_INTERPRETATION.md](docs/SENSOR_INTERPRETATION.md) | Understanding sensor data with formulas |
 | [HOME_ASSISTANT_SETUP.md](docs/HOME_ASSISTANT_SETUP.md) | Dashboard and Home Assistant integration |
+| [REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md) | Access your dashboard from anywhere (Nabu Casa, Tailscale, Cloudflare) |
 | [FIRE_TABLET_SETUP.md](docs/FIRE_TABLET_SETUP.md) | Using Amazon Fire tablet as display |
 | [QUICKSTART.md](docs/QUICKSTART.md) | Fast-track setup guide |
 
@@ -291,6 +292,7 @@ Air-quality-sensors/
 │   ├── RASPBERRY_PI_SETUP.md
 │   ├── SENSOR_INTERPRETATION.md
 │   ├── HOME_ASSISTANT_SETUP.md
+│   ├── REMOTE_ACCESS.md
 │   ├── FIRE_TABLET_SETUP.md
 │   └── QUICKSTART.md
 ├── firmware/
