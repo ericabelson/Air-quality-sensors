@@ -348,6 +348,8 @@ homeassistant:
     - type: homeassistant
 ```
 
+**⚠️ IMPORTANT:** You must have only ONE non-system user in Home Assistant for bypass login to work automatically. If you have multiple users, you'll be asked to select which user to log in as (but no password required).
+
 10. Click **Save** icon (top right)
 11. Go to **Settings** → **System** → **Restart** to apply changes
 
@@ -368,11 +370,11 @@ homeassistant:
     - type: trusted_networks
       trusted_networks:
         - 192.168.1.0/24  # Your local network - adjust if different
-      allow_trusted_networks_bypass: true
+      allow_bypass_login: true
     - type: homeassistant
 ```
 
-**⚠️ IMPORTANT:** The parameter is `allow_trusted_networks_bypass` (not `allow_bypass_login` - this is a common mistake!)
+**⚠️ IMPORTANT:** You must have only ONE non-system user in Home Assistant for bypass login to work automatically. If you have multiple users, you'll be asked to select which user to log in as (but no password required).
 
 4. Save the file (press `Ctrl+X`, then `Y`, then `Enter`)
 5. Restart Home Assistant and wait for it to fully restart:
@@ -625,28 +627,38 @@ If you don't want to use Fully Kiosk, here are simpler alternatives:
 
 ### Dashboard Shows Login Screen (Still Asking for Password)
 
-This is usually caused by incorrect trusted networks configuration. Follow these steps to diagnose and fix:
+This is usually caused by incorrect trusted networks configuration or having multiple users. Follow these steps to diagnose and fix:
 
-#### Step 1: Verify the Configuration Parameter
+#### Step 1: Check Number of Users
 
-The most common mistake is using the wrong parameter name. Check your `configuration.yaml`:
+**The most common cause:** `allow_bypass_login` only works automatically if you have exactly ONE non-system user in Home Assistant. If you have multiple users, you'll see a user selection screen (but no password required).
+
+To check:
+1. Go to **Settings** → **People** → **Users** tab
+2. Count how many users you have (excluding system accounts)
+3. If you have multiple users, you'll need to select a user each time, OR delete extra users if not needed
+
+#### Step 2: Verify the Configuration Parameter
+
+Ensure your `configuration.yaml` has the correct format:
 
 ```yaml
-# ❌ WRONG - will NOT work:
-allow_bypass_login: true
-
-# ✓ CORRECT - use this:
-allow_trusted_networks_bypass: true
+# ✓ CORRECT format:
+homeassistant:
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks:
+        - 192.168.1.0/24  # Adjust to your network
+      allow_bypass_login: true
+    - type: homeassistant
 ```
 
-**If you used the wrong parameter, edit the file:**
+**Edit the file if needed:**
 ```bash
 sudo nano ~/homeassistant/configuration.yaml
 ```
 
-Change `allow_bypass_login` to `allow_trusted_networks_bypass`, save, and restart Home Assistant.
-
-#### Step 2: Verify Your Network Range
+#### Step 3: Verify Your Network Range
 
 The Fire tablet must be within the trusted network range. Find the correct range:
 
@@ -669,7 +681,7 @@ For example:
 - Pi: `192.168.1.100` ✓ Tablet: `192.168.1.50` (same network)
 - Pi: `192.168.0.100` ✗ Tablet: `192.168.1.50` (different networks - won't work!)
 
-#### Step 3: Wait for Full Restart
+#### Step 4: Wait for Full Restart
 
 Home Assistant takes 2-5 minutes to fully restart. Don't test until after:
 
@@ -679,7 +691,7 @@ docker restart homeassistant
 
 Then wait, and test at least 3-5 minutes later.
 
-#### Step 4: Test from Computer First
+#### Step 5: Test from Computer First
 
 Before testing on the Fire tablet, test from your computer:
 
@@ -687,7 +699,7 @@ Before testing on the Fire tablet, test from your computer:
 2. **Without logging in**, check if it loads the dashboard
 3. If you still see a login screen on your computer, the trusted networks auth is not working
 
-#### Step 5: Check Home Assistant Logs
+#### Step 6: Check Home Assistant Logs
 
 If it's still not working, check for configuration errors:
 
@@ -698,12 +710,13 @@ docker logs homeassistant | grep -i auth
 
 Look for any errors related to `auth_providers` or `trusted_networks`.
 
-#### Step 6: Fallback - Use Long-Lived Token Instead
+#### Step 7: Fallback - Use Long-Lived Token Instead
 
 If trusted networks still won't work, use the token method (more secure):
 
-1. **Trusted Networks**
-   - Verify parameter name is `allow_trusted_networks_bypass`
+1. **Trusted Networks Checklist**
+   - Verify you have only ONE non-system user in Home Assistant
+   - Verify parameter name is `allow_bypass_login: true`
    - Verify network range matches your tablet's network
    - Restart Home Assistant and wait 3-5 minutes
 
