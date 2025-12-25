@@ -315,10 +315,28 @@ This method tells Home Assistant to automatically trust any device on your home 
 3. Log in with your Home Assistant username and password (the one you created during [Home Assistant Setup](HOME_ASSISTANT_SETUP.md))
 
 ##### Step 3.3.2: Edit the Configuration File
+
+First, determine which Home Assistant installation type you have:
+
+**To check:**
 1. In Home Assistant, click **Settings** in the left sidebar
-2. Click **Add-ons** (if using Home Assistant OS) or access your Pi via SSH
-3. You need to edit the file `configuration.yaml` on your Raspberry Pi
-4. Add the following to the file:
+2. Look for **"Add-ons"** in the menu
+   - **If you see "Add-ons"** → You have **Home Assistant OS** (follow Option 1 below)
+   - **If you DON'T see "Add-ons"** → You have **Home Assistant Container** (follow Option 2 below)
+
+---
+
+**Option 1: Home Assistant OS (Has "Add-ons" menu)**
+
+1. In Home Assistant, go to **Settings** → **Add-ons**
+2. Click **Add-on Store** (bottom right button)
+3. Search for "File editor"
+4. Click on **File editor**, then click **Install**
+5. Once installed, click **Start**
+6. Enable **"Show in sidebar"** toggle
+7. Click **"File editor"** in the left sidebar (you may need to refresh)
+8. In the file browser, click on **`configuration.yaml`**
+9. Add the following to the file:
 
 ```yaml
 homeassistant:
@@ -330,12 +348,44 @@ homeassistant:
     - type: homeassistant
 ```
 
-**Note:** Change `192.168.1.0/24` to match your network. If your Pi's IP is `192.168.0.100`, use `192.168.0.0/24`.
+10. Click **Save** icon (top right)
+11. Go to **Settings** → **System** → **Restart** to apply changes
 
-##### Step 3.3.3: Restart Home Assistant
-1. In Home Assistant, go to **Settings** → **System** → **Restart**
-2. Click **Restart** and wait 1-2 minutes for it to come back up
-3. Now any device on your home network can access Home Assistant without logging in
+---
+
+**Option 2: Home Assistant Container (No "Add-ons" menu)**
+
+1. SSH into your Raspberry Pi (see [Raspberry Pi Setup](RASPBERRY_PI_SETUP.md) for SSH instructions)
+2. Edit the configuration file:
+   ```bash
+   nano ~/homeassistant/configuration.yaml
+   ```
+3. Add the following to the file:
+
+```yaml
+homeassistant:
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks:
+        - 192.168.1.0/24  # Your local network - adjust if different
+      allow_bypass_login: true
+    - type: homeassistant
+```
+
+4. Save the file (press `Ctrl+X`, then `Y`, then `Enter`)
+5. Restart Home Assistant:
+   ```bash
+   docker restart homeassistant
+   ```
+
+---
+
+**Note for both options:** Change `192.168.1.0/24` to match your network. If your Pi's IP is `192.168.0.100`, use `192.168.0.0/24`.
+
+##### Step 3.3.3: Verify Auto-Login Works
+1. Wait 1-2 minutes for Home Assistant to restart
+2. Now any device on your home network can access Home Assistant without logging in
+3. Test by opening `http://[YOUR_PI_IP]:8123` on your Fire tablet - it should load without asking for a password
 
 ---
 
