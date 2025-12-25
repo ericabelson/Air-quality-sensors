@@ -180,17 +180,25 @@ Run these commands on your Raspberry Pi:
 git clone https://github.com/ericabelson/Air-quality-sensors.git
 cd Air-quality-sensors
 
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
 # Install Python dependencies
 pip3 install -r requirements.txt
 
 # Install PlatformIO (for Arduino programming)
 pip3 install platformio
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
 
 # Flash the Arduino Nano firmware
 cd firmware/airNano
 pio run -t upload
+```
+
+**Note:** The virtual environment keeps Python packages isolated from your system. You'll need to activate it each time you open a new terminal:
+```bash
+cd Air-quality-sensors
+source venv/bin/activate
 ```
 
 **Troubleshooting:** If you encounter issues with PlatformIO or flashing, see [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) for detailed troubleshooting steps.
@@ -198,6 +206,11 @@ pio run -t upload
 ### Step 3: Start Data Collection
 
 ```bash
+# Make sure you're in the project directory with the virtual environment activated
+cd Air-quality-sensors
+source venv/bin/activate
+
+# Run the data collection script
 cd firmware/xu4Mqqt
 ./runAll.sh
 ```
@@ -207,8 +220,8 @@ This script starts the sensor readers in the background. Data is saved to CSV fi
 To run automatically on boot, add to crontab:
 ```bash
 crontab -e
-# Add this line:
-@reboot cd /path/to/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
+# Add this line (adjust path as needed):
+@reboot cd /path/to/Air-quality-sensors && source venv/bin/activate && cd firmware/xu4Mqqt && ./runAll.sh
 ```
 
 ### Step 4: View Your Data (Optional)
