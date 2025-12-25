@@ -570,9 +570,27 @@ Now let's create a dashboard that shows all your sensors together.
 
 1. Open your new dashboard
 2. Click the three dots (⋮) → **Edit Dashboard**
-3. Click **+ Add Card**
+3. Click **Create Section** to add a section for your cards
+4. Within that section, click the **+** icon to add cards
+
+**Note:** In Home Assistant, cards are added within sections. If you see options for "add title", "badge", "view", or "create section", you're in the right place. Select **"Create Section"** first, then add cards inside that section.
 
 #### Aranet 4 CO2 Gauge
+
+To add a gauge card:
+1. In your section, click the **+** button
+2. Select **Gauge** card type
+3. Configure the following:
+   - Entity: `sensor.aranet4_xxxx_co2`
+   - Title: "CO2 Level"
+   - Min: 400
+   - Max: 2500
+   - Severity thresholds:
+     - Green: 400
+     - Yellow: 800
+     - Red: 1000
+
+Or paste this YAML if your dashboard supports YAML editing:
 
 ```yaml
 type: gauge
@@ -587,8 +605,17 @@ severity:
 needle: true
 ```
 
-#### Environmental Summary
+#### Environmental Summary (Temperature, Humidity, Pressure)
 
+Add three cards in a row by creating a "Horizontal Stack" section:
+
+1. Click **Create Section** and select **"Horizontal Stack"** layout
+2. Add three **Entity** cards inside:
+   - Card 1: Entity = `sensor.aranet4_xxxx_temperature`, Title = "Temperature"
+   - Card 2: Entity = `sensor.aranet4_xxxx_humidity`, Title = "Humidity"
+   - Card 3: Entity = `sensor.aranet4_xxxx_pressure`, Title = "Pressure"
+
+Or use YAML:
 ```yaml
 type: horizontal-stack
 cards:
@@ -608,6 +635,16 @@ cards:
 
 #### Door Status Card
 
+Add an **Entities** card:
+
+1. Click **Create Section**, then add an **Entities** card type
+2. Set Title: "Doors & Windows"
+3. Add your door/window sensors:
+   - `binary_sensor.front_door` (Front Door)
+   - `binary_sensor.back_door` (Back Door)
+   - `binary_sensor.kitchen_window` (Kitchen Window)
+
+Or use YAML:
 ```yaml
 type: entities
 title: Doors & Windows
