@@ -144,7 +144,13 @@ Now install the app you just downloaded:
 - **Install button is grayed out?** Go back to Step 2.1 and ensure "Apps from Unknown Sources" is enabled
 - **Installation failed?** Download the APK again; the file may have been corrupted
 
+**✓ Installation successful?** Great! Skip ahead to [Step 2.4: Grant Permissions](#step-24-grant-permissions) below.
+
+---
+
 ### Alternative Method: Install via Computer (Advanced)
+
+> **Note:** Only use this method if the direct installation above (Steps 2.1-2.3) didn't work for you. Most users won't need this.
 
 If you have a computer and USB cable, you can install via ADB (Android Debug Bridge):
 
@@ -211,7 +217,11 @@ If you have a computer and USB cable, you can install via ADB (Android Debug Bri
    - Look for "Success" message in terminal
    - On tablet, check app drawer for Fully Kiosk Browser icon
 
-### Step 2.2: Grant Permissions
+---
+
+### Step 2.4: Grant Permissions
+
+Now that Fully Kiosk Browser is installed (via either method above), open it and grant the required permissions:
 
 When you first open Fully Kiosk:
 
