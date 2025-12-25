@@ -609,7 +609,15 @@ Follow [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md) for hardware assembly.
 
 ```bash
 cd ~/Air-quality-sensors
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
 pip3 install -r requirements.txt
+
+# Flash Arduino
 cd firmware/airNano
 pio run -t upload
 ```
@@ -617,6 +625,11 @@ pio run -t upload
 ### Step 3: Start Data Collection
 
 ```bash
+# Make sure virtual environment is activated
+cd ~/Air-quality-sensors
+source venv/bin/activate
+
+# Run data collection
 cd firmware/xu4Mqqt
 ./runAll.sh
 ```

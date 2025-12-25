@@ -74,18 +74,20 @@ sudo apt install -y python3-pip python3-venv git i2c-tools
 # Enable I2C
 sudo raspi-config nonint do_i2c 0
 
-# Install PlatformIO for Arduino
-pip3 install platformio
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
 # Clone the repository
 cd ~
 git clone https://github.com/ericabelson/Air-quality-sensors.git
+cd Air-quality-sensors
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
 # Install Python dependencies
-cd Air-quality-sensors
 pip3 install -r requirements.txt
+
+# Install PlatformIO for Arduino
+pip3 install platformio
 ```
 
 ---

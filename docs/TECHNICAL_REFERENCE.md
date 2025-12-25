@@ -352,12 +352,13 @@ This document provides verified technical specifications, datasheets, and refere
 
 **Installation:**
 ```bash
-# On Raspberry Pi / Linux
-pip3 install platformio
+# Create and activate virtual environment (if not already done)
+cd ~/Air-quality-sensors
+python3 -m venv venv
+source venv/bin/activate
 
-# Add to PATH
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+# Install PlatformIO in the virtual environment
+pip3 install platformio
 ```
 
 **Official Resources:**
@@ -403,8 +404,13 @@ lib_deps =
 
 #### Required Python Packages
 
-Install via pip:
+Install via pip within a virtual environment:
 ```bash
+# Activate virtual environment (if not already active)
+cd ~/Air-quality-sensors
+source venv/bin/activate
+
+# Install dependencies
 pip3 install -r requirements.txt
 ```
 

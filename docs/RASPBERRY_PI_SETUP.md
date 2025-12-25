@@ -239,7 +239,30 @@ Navigate using arrow keys:
 
 Wait 1-2 minutes, then SSH back in.
 
-### Step 3.4: Install PlatformIO (for Arduino programming)
+### Step 3.4: Clone the Repository
+
+```bash
+cd ~
+git clone https://github.com/ericabelson/Air-quality-sensors.git
+cd Air-quality-sensors
+```
+
+### Step 3.5: Create Python Virtual Environment
+
+Modern Raspberry Pi OS uses PEP 668 to protect the system Python installation. We'll create a virtual environment to safely install Python packages.
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+**Note:** You'll need to activate this virtual environment each time you open a new terminal:
+```bash
+cd ~/Air-quality-sensors
+source venv/bin/activate
+```
+
+### Step 3.6: Install PlatformIO (for Arduino programming)
 
 **What is PlatformIO?**
 PlatformIO is a professional development tool for embedded systems that replaces the Arduino IDE. It's faster, more reliable, and works perfectly on a headless Raspberry Pi.
@@ -247,19 +270,13 @@ PlatformIO is a professional development tool for embedded systems that replaces
 **Official Website:** [https://platformio.org](https://platformio.org)
 **Documentation:** [https://docs.platformio.org](https://docs.platformio.org)
 
-Install PlatformIO Core (command-line version):
+Install PlatformIO Core (command-line version) in the virtual environment:
 
 ```bash
 pip3 install platformio
 ```
 
 This will download and install PlatformIO. **It may take 2-5 minutes.**
-
-Add PlatformIO to your PATH so you can run it from anywhere:
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
 
 **Verify installation:**
 ```bash
@@ -273,30 +290,21 @@ You should see output like: `PlatformIO Core, version X.X.X`
 - Or manually add to PATH: `export PATH="$HOME/.local/bin:$PATH"`
 
 **Troubleshooting:**
-- **"Command not found"**: Ensure ~/.local/bin is in PATH (check with `echo $PATH`)
-- **Permission denied**: Don't use sudo with pip3
+- **"Command not found"**: Ensure the virtual environment is activated
+- **Permission denied**: Don't use sudo with pip3 inside the venv
 - **Installation failed**: Ensure Python 3 is installed (`python3 --version`)
 
-### Step 3.5: Clone the Repository
+### Step 3.7: Install Python Dependencies
 
-```bash
-cd ~
-git clone https://github.com/ericabelson/Air-quality-sensors.git
-cd Air-quality-sensors
-```
-
-### Step 3.6: Install Python Dependencies
+With the virtual environment still activated, install the required Python packages:
 
 ```bash
 pip3 install -r requirements.txt
 ```
 
-If you see errors, try:
-```bash
-pip3 install pyserial pynmea2 paho-mqtt getmac netifaces PyYAML
-```
+This installs all required packages safely within the virtual environment without affecting your system Python.
 
-### Step 3.7: Flash the Arduino Nano
+### Step 3.8: Flash the Arduino Nano
 
 **What this does:** This uploads the sensor-reading firmware from your computer to the Arduino Nano's memory.
 
