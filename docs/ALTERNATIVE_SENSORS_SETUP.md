@@ -377,20 +377,34 @@ Z-Wave JS UI (formerly zwavejs2mqtt) provides both the Z-Wave JS server and a ma
    mkdir -p ~/zwavejs
    ```
 
-2. Start the Z-Wave JS UI container:
+2. Start the Z-Wave JS UI container with host networking (required to match Home Assistant):
    ```bash
    docker run -d \
      --name zwavejs \
      --restart=unless-stopped \
-     -p 8091:8091 \
-     -p 3000:3000 \
+     --network host \
      -v ~/zwavejs:/usr/src/app/store \
-     --device=/dev/ttyUSB0:/dev/zwave \
+     --device=/dev/ttyUSB0:/dev/ttyUSB0 \
      -e TZ=America/Chicago \
      zwavejs/zwave-js-ui:latest
    ```
 
-   **Note:** Replace `/dev/ttyUSB0` with your actual device path.
+   **Important notes:**
+   - Replace `/dev/ttyUSB0` with your actual device path from Step B.1
+   - We use `--network host` so Home Assistant (also on host network) can reach `localhost:3000`
+   - We map the device to the same path (`/dev/ttyUSB0:/dev/ttyUSB0`) for clarity
+
+   **Using stable device path (recommended):**
+   ```bash
+   docker run -d \
+     --name zwavejs \
+     --restart=unless-stopped \
+     --network host \
+     -v ~/zwavejs:/usr/src/app/store \
+     --device=/dev/serial/by-id/usb-Silicon_Labs_YOUR_DEVICE_ID:/dev/ttyUSB0 \
+     -e TZ=America/Chicago \
+     zwavejs/zwave-js-ui:latest
+   ```
 
 3. Wait 1-2 minutes for the container to start, then open the Z-Wave JS UI:
    ```
@@ -398,12 +412,18 @@ Z-Wave JS UI (formerly zwavejs2mqtt) provides both the Z-Wave JS server and a ma
    ```
    Or use your Pi's IP: `http://192.168.x.x:8091`
 
-4. Configure Z-Wave JS UI:
-   - Go to **Settings** → **Z-Wave**
-   - Set **Serial Port** to `/dev/zwave`
+4. **Configure the serial port in Z-Wave JS UI** (this step is required!):
+   - Go to **Settings** (gear icon in the left sidebar)
+   - Scroll down to the **Z-Wave** section
+   - Set **Serial Port** to `/dev/ttyUSB0` (the path inside the container)
    - Leave other settings at defaults
-   - Click **Save** at the bottom
-   - The status should change to "Driver: Ready"
+   - Click **Save** at the bottom of the page
+   - Wait 10-20 seconds - the status should change to "Driver: Ready"
+
+   **If you see "Driver: Not Ready":**
+   - Double-check the Serial Port setting
+   - Check that the device was passed correctly: `docker inspect zwavejs | grep -A5 Devices`
+   - Try restarting the container: `docker restart zwavejs`
 
 #### Step B.4: Connect Home Assistant to Z-Wave JS
 
@@ -476,6 +496,44 @@ Z-Wave JS UI (formerly zwavejs2mqtt) provides both the Z-Wave JS server and a ma
 **"Z-Wave" integration not found:**
 - Make sure you're searching for just "Z-Wave", not "Z-Wave JS"
 - Restart Home Assistant if you just added the USB device
+
+**"Failed to connect" when adding Z-Wave integration:**
+
+This is usually a network mismatch. Check:
+
+1. **Verify only ONE zwavejs container is running:**
+   ```bash
+   docker ps | grep -E "zwavejs|zwave"
+   ```
+   If you see multiple containers (e.g., `zwavejs` AND `zwavejs-ui`), remove extras:
+   ```bash
+   docker stop zwavejs-ui && docker rm zwavejs-ui  # or whichever is the duplicate
+   ```
+
+2. **Both containers must use the same network mode:**
+   - Home Assistant uses `--network host`
+   - Z-Wave JS must also use `--network host` for `ws://localhost:3000` to work
+
+   Check with: `docker inspect zwavejs | grep NetworkMode`
+
+   If it shows `"bridge"` instead of `"host"`, recreate the container:
+   ```bash
+   docker stop zwavejs && docker rm zwavejs
+   # Then run the container again with --network host (see Step B.3)
+   ```
+
+3. **Verify Z-Wave JS is actually running and configured:**
+   ```bash
+   docker logs zwavejs | tail -20
+   ```
+   - If you see `Z-Wave driver not inited, no port configured`, you need to configure the serial port in the Z-Wave JS UI web interface (Step B.3, item 4)
+   - If you see `Driver: Ready`, the Z-Wave side is working
+
+4. **Test the websocket connection:**
+   ```bash
+   curl -i http://localhost:3000
+   ```
+   You should get a response (even if it's an error page). If connection refused, Z-Wave JS isn't running on host network.
 
 **Can't connect to Z-Wave JS server:**
 - Check Z-Wave JS UI container is running: `docker ps | grep zwavejs`
