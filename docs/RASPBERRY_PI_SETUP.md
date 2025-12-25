@@ -132,12 +132,23 @@ For example:
 ssh pi@192.168.1.100
 ```
 
+**Note:** If you configured a different username during the Raspberry Pi Imager setup (like `demeter`), use that username instead:
+```bash
+ssh demeter@192.168.1.100
+```
+
 Type `yes` when asked about the fingerprint, then enter your password.
 
 **You should now see:**
 ```
 pi@utsensing:~ $
 ```
+or
+```
+demeter@utsensing:~ $
+```
+
+**Windows Users:** See [WINDOWS_SSH_SETUP.md](WINDOWS_SSH_SETUP.md) for detailed SSH key setup instructions.
 
 ---
 
@@ -288,13 +299,34 @@ cd Air-quality-sensors
 
 ### Step 3.6: Install Python Dependencies
 
+**Modern Raspberry Pi OS uses "externally-managed environment" which prevents system-wide pip installs.**
+
+**Option A: Use Virtual Environment (Recommended)**
+
 ```bash
+cd ~/Air-quality-sensors
+python3 -m venv venv
+source venv/bin/activate
 pip3 install -r requirements.txt
 ```
 
-If you see errors, try:
+**You'll need to activate the virtual environment each time:**
 ```bash
-pip3 install pyserial pynmea2 paho-mqtt getmac netifaces PyYAML
+cd ~/Air-quality-sensors
+source venv/bin/activate
+```
+
+**Option B: Install System-Wide (Override Protection)**
+
+```bash
+pip3 install --break-system-packages -r requirements.txt
+```
+
+**⚠️ Warning:** Option B may cause conflicts with system packages. Option A is safer.
+
+If you see errors, manually install core dependencies:
+```bash
+pip3 install pyserial pynmea2 paho-mqtt getmac netifaces PyYAML requests numpy
 ```
 
 ### Step 3.7: Flash the Arduino Nano
@@ -559,19 +591,70 @@ See [HOME_ASSISTANT_SETUP.md](HOME_ASSISTANT_SETUP.md) for detailed dashboard co
 
 ## Troubleshooting
 
+### Problem: "FileNotFoundError: credentials.yml"
+
+**Cause:** MQTT credentials file is missing, but the code tries to load it.
+
+**Solution:**
+
+MQTT is disabled by default (`mqttOn = False` in mintsDefinitions.py), but the credentials file is still referenced in the code.
+
+```bash
+cd ~/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4
+cp credentials.yml.example credentials.yml
+```
+
+If you don't plan to use MQTT, you can leave the example values. If you want to use MQTT:
+
+```bash
+nano credentials.yml
+# Update with your MQTT broker username and password
+```
+
+### Problem: "ModuleNotFoundError: No module named 'requests'"
+
+**Cause:** The `requests` module wasn't installed with the requirements.
+
+**Solution:**
+
+```bash
+cd ~/Air-quality-sensors
+source venv/bin/activate  # If using virtual environment
+pip3 install requests
+```
+
+Or reinstall all requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
+### Problem: "externally-managed-environment" error when using pip
+
+**Cause:** Modern Raspberry Pi OS prevents system-wide pip installs to avoid conflicts.
+
+**Solution:** Use a virtual environment (recommended):
+
+```bash
+cd ~/Air-quality-sensors
+python3 -m venv venv
+source venv/bin/activate
+pip3 install -r requirements.txt
+```
+
 ### Problem: "Permission denied" when accessing serial port
 
 ```bash
 sudo chmod 666 /dev/ttyUSB0
-sudo usermod -a -G dialout pi
+sudo usermod -a -G dialout pi  # Or: sudo usermod -a -G dialout demeter
 # Log out and back in
 ```
 
 ### Problem: Arduino not detected
 
 1. Try a different USB port
-2. Try a different USB cable
+2. Try a different USB cable (some cables are power-only)
 3. Check with: `dmesg | tail -20`
+4. Verify Arduino appears: `ls /dev/ttyUSB*`
 
 ### Problem: Sensors not responding
 
@@ -595,10 +678,28 @@ sudo usermod -a -G dialout pi
    journalctl -u utsensing -f
    ```
 
+3. Verify data directory exists:
+   ```bash
+   ls -la /home/utsensing/utData/raw/
+   ```
+
 ### Problem: Wrong sensor readings
 
 1. Make sure sensors have warmed up (wait 5-10 minutes after power on)
 2. MQ136 needs 24-48 hours of burn-in for accurate readings
+3. Check sensor connections are secure
+
+### Problem: Virtual environment not activated
+
+**Symptom:** Commands fail with module not found errors
+
+**Solution:** Always activate the virtual environment before running scripts:
+
+```bash
+cd ~/Air-quality-sensors
+source venv/bin/activate
+# Now your prompt should show: (venv) pi@utsensing:~/Air-quality-sensors $
+```
 
 ---
 
@@ -606,9 +707,34 @@ sudo usermod -a -G dialout pi
 
 Your Raspberry Pi is a computer on your network. Take a few minutes to secure it.
 
-### Step 8.1: Run the Security Hardening Script
+### Step 8.1: Set Up SSH Key Authentication FIRST (Recommended)
 
-We provide a script that automatically configures security best practices:
+**⚠️ IMPORTANT:** Set up SSH keys BEFORE running the security hardening script!
+
+SSH keys are more secure than passwords and the security script may disable password authentication.
+
+**Windows Users:** Follow the comprehensive guide at [WINDOWS_SSH_SETUP.md](WINDOWS_SSH_SETUP.md)
+
+**Mac/Linux Users:**
+
+```bash
+# On your computer (not the Pi)
+ssh-keygen -t ed25519 -C "air-quality-pi"
+
+# Copy to your Pi
+ssh-copy-id pi@[YOUR_PI_IP]
+# Or: ssh-copy-id demeter@[YOUR_PI_IP]
+```
+
+**Test it works:**
+```bash
+ssh pi@[YOUR_PI_IP]
+# You should connect without entering a password!
+```
+
+### Step 8.2: Run the Security Hardening Script
+
+Now that SSH keys are set up, run the security hardening script:
 
 ```bash
 cd ~/Air-quality-sensors/scripts
@@ -616,27 +742,18 @@ chmod +x security-hardening.sh
 sudo bash security-hardening.sh
 ```
 
-This script will:
-- Configure SSH hardening (disable root, limit attempts)
-- Install fail2ban (blocks brute-force attacks)
-- Set up UFW firewall (blocks unauthorized access)
-- Enable automatic security updates
+**What the script does:**
+- Configures SSH hardening (disable root login, limit connection attempts)
+- Installs fail2ban (automatically blocks brute-force attacks)
+- Sets up UFW firewall (blocks unauthorized network access)
+- Enables automatic security updates
+
+**During the script:**
+- When asked "Do you want to continue WITHOUT disabling password authentication? [y/N]"
+  - If you set up SSH keys: Type **`n`** and press Enter (script will disable passwords)
+  - If you skipped SSH keys: Type **`y`** and press Enter (keeps passwords enabled)
 
 **IMPORTANT:** After running the script, open a NEW terminal and verify you can still SSH in before closing your current session.
-
-### Step 8.2: Set Up SSH Key Authentication (Recommended)
-
-SSH keys are more secure than passwords:
-
-**On your computer (not the Pi):**
-
-```bash
-# Generate SSH key
-ssh-keygen -t ed25519 -C "air-quality-pi"
-
-# Copy to your Pi
-ssh-copy-id pi@[YOUR_PI_IP]
-```
 
 ### Step 8.3: Enable Home Assistant 2FA
 
