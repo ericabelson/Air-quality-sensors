@@ -155,6 +155,13 @@ UTSensing provides real-time monitoring of:
 
 This section gets you from zero to collecting air quality data. Follow the steps in order.
 
+> **Don't have the Arduino and sensors yet?** You can still get started! See [Alternative Sensors Setup](docs/ALTERNATIVE_SENSORS_SETUP.md) to set up:
+> - **Aranet 4** (Bluetooth CO2 monitor)
+> - **Door/window sensors** (Zigbee, Z-Wave, or GPIO)
+> - **Fire tablet display** - works with any sensor setup
+>
+> Add the Arduino sensors later when you have them.
+
 ### Step 1: Hardware Setup
 
 If you haven't assembled the hardware yet, start with the [Complete Raspberry Pi 4 Setup Guide](docs/RASPBERRY_PI_SETUP.md). This covers:
@@ -223,6 +230,7 @@ See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md) to create rea
 | [RASPBERRY_PI_SETUP.md](docs/RASPBERRY_PI_SETUP.md) | Complete hardware assembly and Raspberry Pi configuration |
 | [HOME_ASSISTANT_SETUP.md](docs/HOME_ASSISTANT_SETUP.md) | Dashboard setup with MQTT integration |
 | [FIRE_TABLET_SETUP.md](docs/FIRE_TABLET_SETUP.md) | Using an Amazon Fire tablet as a dedicated display |
+| [ALTERNATIVE_SENSORS_SETUP.md](docs/ALTERNATIVE_SENSORS_SETUP.md) | **Start without Arduino!** Set up Aranet 4 (Bluetooth CO2), door/window sensors, and get the Fire tablet display working while you wait for the full sensor kit |
 
 ### Reference
 | Document | Description |
