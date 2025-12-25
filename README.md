@@ -230,6 +230,7 @@ See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md) to create rea
 | [RASPBERRY_PI_SETUP.md](docs/RASPBERRY_PI_SETUP.md) | Complete hardware assembly and Raspberry Pi configuration |
 | [HOME_ASSISTANT_SETUP.md](docs/HOME_ASSISTANT_SETUP.md) | Dashboard setup with MQTT integration |
 | [FIRE_TABLET_SETUP.md](docs/FIRE_TABLET_SETUP.md) | Using an Amazon Fire tablet as a dedicated display |
+| [REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md) | Access your dashboard from anywhere (Nabu Casa, Tailscale, Cloudflare) |
 | [ALTERNATIVE_SENSORS_SETUP.md](docs/ALTERNATIVE_SENSORS_SETUP.md) | **Start without Arduino!** Set up Aranet 4 (Bluetooth CO2), door/window sensors, and get the Fire tablet display working while you wait for the full sensor kit |
 
 ### Reference
@@ -336,6 +337,8 @@ Air-quality-sensors/
 │   ├── TECHNICAL_REFERENCE.md
 │   ├── SENSOR_INTERPRETATION.md
 │   ├── HOME_ASSISTANT_SETUP.md
+│   ├── REMOTE_ACCESS.md
+│   ├── ALTERNATIVE_SENSORS_SETUP.md
 │   └── FIRE_TABLET_SETUP.md
 ├── firmware/
 │   ├── airNano/              # Arduino Nano firmware (PlatformIO)
