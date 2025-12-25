@@ -246,6 +246,11 @@ See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md) to create rea
 | [REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md) | Access your dashboard from anywhere (Nabu Casa, Tailscale, Cloudflare) |
 | [ALTERNATIVE_SENSORS_SETUP.md](docs/ALTERNATIVE_SENSORS_SETUP.md) | **Start without Arduino!** Set up Aranet 4 (Bluetooth CO2), door/window sensors, and get the Fire tablet display working while you wait for the full sensor kit |
 
+### Security
+| Document | Description |
+|----------|-------------|
+| [SECURITY.md](docs/SECURITY.md) | **Important!** Security hardening, network segmentation, SSH/firewall setup |
+
 ### Reference
 | Document | Description |
 |----------|-------------|
@@ -352,7 +357,10 @@ Air-quality-sensors/
 │   ├── HOME_ASSISTANT_SETUP.md
 │   ├── REMOTE_ACCESS.md
 │   ├── ALTERNATIVE_SENSORS_SETUP.md
-│   └── FIRE_TABLET_SETUP.md
+│   ├── FIRE_TABLET_SETUP.md
+│   └── SECURITY.md           # Security hardening guide
+├── scripts/                  # Utility scripts
+│   └── security-hardening.sh # Automated security setup
 ├── firmware/
 │   ├── airNano/              # Arduino Nano firmware (PlatformIO)
 │   │   ├── src/main.cpp      # Main sensor loop

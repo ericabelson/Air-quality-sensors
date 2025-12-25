@@ -80,11 +80,22 @@ macAddress            = findMacAddress()
 latestDisplayOn       = True
 latestOn              = True
 
-# For MQTT 
-mqttOn                    = False
+# MQTT Configuration
+# By default, MQTT is disabled for local-only operation.
+# If you want to use MQTT, install a local broker (e.g., Mosquitto)
+# and update the settings below.
+#
+# For local Mosquitto broker:
+#   mqttBroker = "localhost"
+#   mqttPort = 1883
+#
+# SECURITY NOTE: External MQTT brokers have been removed.
+# All sensor data stays local on your network.
+
+mqttOn                   = False          # Set True to enable MQTT
 mqttCredentialsFile      = 'mintsXU4/credentials.yml'
-mqttBroker               = "mqtt.circ.utdallas.edu"
-mqttPort                 =  8883  # Secure port
+mqttBroker               = "localhost"    # Local MQTT broker only
+mqttPort                 = 1883           # Standard MQTT port (no TLS for local)
 
 
 gpsPort               = findPort("GPS/GNSS Receiver")
