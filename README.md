@@ -4,65 +4,110 @@ A comprehensive, open-source air quality monitoring platform for collecting, pro
 
 ---
 
-## Table of Contents
+## Which Setup Path Should I Follow?
 
-1. [Overview](#overview)
-2. [Supported Sensors](#supported-sensors)
-3. [System Architecture](#system-architecture)
-4. [Hardware Requirements](#hardware-requirements)
-5. [Quick Start](#quick-start)
-6. [Documentation](#documentation)
-7. [Data Interpretation](#data-interpretation)
-8. [Home Assistant Integration](#home-assistant-integration)
-9. [Troubleshooting](#troubleshooting)
-10. [Project Structure](#project-structure)
-11. [Contributing](#contributing)
-12. [License](#license)
+Use this decision tree to find the right guide for your situation:
+
+```
+START HERE
+    │
+    ▼
+Do you have the Arduino Nano + sensor kit?
+    │
+    ├── YES ──► Do you want the full step-by-step guide?
+    │               │
+    │               ├── YES ──► Follow the FULL SETUP PATH below
+    │               │
+    │               └── NO (experienced) ──► See Quick Reference Commands
+    │
+    └── NO ──► Do you have other sensors (Aranet 4, door sensors, etc.)?
+                    │
+                    ├── YES ──► Follow the ALTERNATIVE SETUP PATH below
+                    │
+                    └── NO ──► You can still set up Home Assistant!
+                               See Alternative Setup Path
+```
 
 ---
 
-## Overview
+## Setup Paths
 
-UTSensing provides real-time monitoring of:
+### Full Setup Path (Arduino + All Sensors)
 
-- **Air Quality**: PM1, PM2.5, PM10 particulate matter
-- **Gases**: CO2, CO, NO2, O3, H2S, VOCs, Ethanol
-- **Environment**: Temperature, Humidity, Pressure
-- **Location**: GPS coordinates (for mobile deployments)
+**Total Time:** 2-3 hours | **Difficulty:** Beginner-friendly
+
+| Step | Guide | Time | Description |
+|------|-------|------|-------------|
+| 1 | [Raspberry Pi Setup](docs/RASPBERRY_PI_SETUP.md) | 90 min | Hardware assembly, OS install, sensor configuration |
+| 2 | [Home Assistant Setup](docs/HOME_ASSISTANT_SETUP.md) | 45 min | Dashboard installation and sensor integration |
+| 3 | [Fire Tablet Setup](docs/FIRE_TABLET_SETUP.md) | 30 min | *Optional:* Dedicated wall display |
+
+### Alternative Setup Path (No Arduino Kit)
+
+**Total Time:** 1-2 hours | **Difficulty:** Beginner-friendly
+
+Start monitoring air quality with sensors you already have:
+
+| Step | Guide | Time | Description |
+|------|-------|------|-------------|
+| 1 | [Alternative Sensors Setup](docs/ALTERNATIVE_SENSORS_SETUP.md) | 60 min | Aranet 4, door sensors, any Home Assistant-compatible device |
+| 2 | [Fire Tablet Setup](docs/FIRE_TABLET_SETUP.md) | 30 min | *Optional:* Dedicated wall display |
+
+**Note:** You can add the Arduino sensor kit later - the system is designed to expand.
+
+---
+
+## Documentation
+
+### Setup Guides
+
+| Guide | When to Use |
+|-------|-------------|
+| [Raspberry Pi Setup](docs/RASPBERRY_PI_SETUP.md) | Building the full Arduino sensor system |
+| [Alternative Sensors Setup](docs/ALTERNATIVE_SENSORS_SETUP.md) | Using Aranet 4, door sensors, or starting without Arduino |
+| [Home Assistant Setup](docs/HOME_ASSISTANT_SETUP.md) | Configuring the dashboard after hardware is ready |
+| [Fire Tablet Setup](docs/FIRE_TABLET_SETUP.md) | Setting up a dedicated display |
+| [WS3000 Weather Station](docs/WS3000_SETUP.md) | Adding Ambient Weather station via USB |
+
+### Reference
+
+| Guide | Description |
+|-------|-------------|
+| [Technical Reference](docs/TECHNICAL_REFERENCE.md) | Sensor datasheets, wiring diagrams, calibration procedures |
+| [Sensor Interpretation](docs/SENSOR_INTERPRETATION.md) | Understanding what the readings mean |
+
+### Security & Advanced
+
+| Guide | Description |
+|-------|-------------|
+| [Security Guide](docs/SECURITY.md) | Hardening your installation |
+| [Remote Access](docs/REMOTE_ACCESS.md) | Accessing your dashboard from anywhere |
+| [Windows SSH Setup](docs/WINDOWS_SSH_SETUP.md) | SSH key setup for Windows users |
+
+### Shared Setup Modules
+
+These are referenced by the main guides. You usually don't need to read these directly:
+
+| Module | Description |
+|--------|-------------|
+| [Docker & Home Assistant](docs/setup/DOCKER_HOME_ASSISTANT.md) | Container installation |
+| [MQTT Setup](docs/setup/MQTT_SETUP.md) | Message broker configuration |
+| [PlatformIO & Arduino](docs/setup/PLATFORMIO_ARDUINO.md) | Arduino firmware flashing |
+
+---
+
+## System Overview
+
+### What It Monitors
+
+| Category | Measurements |
+|----------|--------------|
+| **Air Quality** | PM1, PM2.5, PM10 particulate matter |
+| **Gases** | CO2, CO, NO2, O3, H2S, VOCs, Ethanol |
+| **Environment** | Temperature, Humidity, Pressure |
+| **Location** | GPS coordinates (for mobile deployments) |
 
 ### How It Works
-
-1. **Sensors** connect to an **Arduino Nano** via I2C
-2. The Arduino reads all sensors and sends data over USB serial
-3. A **Raspberry Pi** runs Python scripts that parse the serial data
-4. Data is saved to **CSV files** (one per sensor per day) and **JSON** (latest readings)
-5. Optionally, data is published via **MQTT** for Home Assistant dashboards
-
-### Key Features
-
-- Modular sensor architecture - add or remove sensors easily
-- Real-time data logging to CSV and JSON
-- MQTT support for cloud integration
-- Home Assistant compatible for smart home dashboards
-- Fully local operation - no cloud account required
-
----
-
-## Supported Sensors
-
-| Sensor | Model | Parameters | Units | Health Relevance |
-|--------|-------|------------|-------|------------------|
-| **CO2 Sensor** | SCD30 | CO2, Temperature, Humidity | ppm, °C, %RH | Indoor air quality indicator |
-| **Environmental** | BME680 | Temperature, Pressure, Humidity, VOC Gas Resistance | °C, kPa, %RH, kΩ | Weather & air quality |
-| **VOC/eCO2** | SGP30 | TVOC, eCO2, Raw H2, Raw Ethanol | ppb, ppm, raw | Indoor pollution |
-| **Multi-Gas** | MGSV2 | NO2, Ethanol, VOC, CO | ppm | Harmful gas detection |
-| **Ozone** | SEN0321 | O3 | ppb | Outdoor air quality |
-| **Particulate Matter** | PMSA003I | PM1, PM2.5, PM10, Particle bins (0.3-10μm) | μg/m³, count/dL | Respiratory health |
-| **Hydrogen Sulfide** | MQ136 | H2S | Raw ADC (convertible to ppm) | Toxic gas detection |
-
----
-
-## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -75,30 +120,24 @@ UTSensing provides real-time monitoring of:
 │                  │    I2C Bus           │                       │
 │            ┌─────┴─────────────────────┴─────┐                 │
 │            │        Arduino Nano             │                 │
-│            │    (Sensor Data Collection)     │                 │
 │            └───────────────┬─────────────────┘                 │
 └────────────────────────────┼────────────────────────────────────┘
-                             │ Serial (USB) @ 9600 baud
+                             │ USB Serial
 ┌────────────────────────────┼────────────────────────────────────┐
-│                            │                                     │
 │            ┌───────────────┴───────────────┐                    │
-│            │   Raspberry Pi 4 / Odroid C1+ │                    │
-│            │    (Data Processing Unit)     │                    │
+│            │       Raspberry Pi 4          │                    │
 │            └───────────────┬───────────────┘                    │
-│                            │                                     │
 │         ┌──────────────────┼──────────────────┐                 │
 │         ▼                  ▼                  ▼                 │
 │   ┌──────────┐      ┌──────────┐      ┌──────────┐             │
-│   │ CSV Files│      │   JSON   │      │   MQTT   │             │
-│   │ (Storage)│      │ (Latest) │      │ (Cloud)  │             │
-│   └──────────┘      └────┬─────┘      └──────────┘             │
-│                          │                                      │
-│                          ▼                                      │
-│                   ┌──────────────┐                              │
-│                   │Home Assistant│──────► Fire Tablet           │
-│                   │  Dashboard   │        (Display)             │
-│                   └──────────────┘                              │
-│                    PROCESSING LAYER                             │
+│   │ CSV Files│      │   MQTT   │      │Home Asst │             │
+│   │ (Storage)│      │ (Bridge) │      │(Dashboard)│             │
+│   └──────────┘      └──────────┘      └─────┬────┘             │
+│                                             │                   │
+│                                       ┌─────▼─────┐             │
+│                                       │Fire Tablet│             │
+│                                       │ (Display) │             │
+│                                       └───────────┘             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -106,240 +145,72 @@ UTSensing provides real-time monitoring of:
 
 ## Hardware Requirements
 
-### Complete Parts List
+### Full Sensor Kit
 
-#### Main Processing Unit
-| Component | Quantity | Purpose |
-|-----------|----------|---------|
-| Raspberry Pi 4 (4GB+) OR Odroid C1+ | 1 | Main data processing |
-| 32GB+ MicroSD Card (Class 10) | 1 | OS and data storage |
-| USB Power Supply (5V 3A) | 1 | Power for Pi |
-| Micro USB Cable (A-Mini A, 1ft) | 1 | Arduino connection |
+| Component | Purpose |
+|-----------|---------|
+| Raspberry Pi 4 (4GB+) | Main processing unit |
+| Arduino Nano | Sensor data collection |
+| SCD30 | CO2, Temperature, Humidity |
+| BME680 | Temp, Pressure, Humidity, VOC |
+| SGP30 | TVOC, eCO2 |
+| PMSA003I | Particulate Matter |
+| SEN0321 | Ozone |
+| MGSV2 | NO2, Ethanol, VOC, CO |
+| MQ136 | H2S |
+| Grove I2C Hubs (3) | Sensor connections |
 
-#### Sensor Interface
-| Component | Quantity | Purpose |
-|-----------|----------|---------|
-| Arduino Nano (ATmega328P) | 1 | Sensor data collection |
-| Arduino Nano Base/Shield | 1 | Easy sensor connections |
-| Grove I2C Hub | 3 | Sensor bus expansion |
-| RTC Battery (CR1220) | 1 | Timekeeping backup |
+See [Technical Reference](docs/TECHNICAL_REFERENCE.md) for complete parts list with purchase links.
 
-#### Sensors
-| Sensor | Quantity | Measures |
-|--------|----------|----------|
-| SCD30 | 1 | CO2, Temperature, Humidity |
-| BME680 | 1 | Temp, Pressure, Humidity, VOC |
-| SGP30 | 1 | TVOC, eCO2 |
-| MGSV2 (Multichannel Gas) | 1 | NO2, Ethanol, VOC, CO |
-| SEN0321 | 1 | Ozone |
-| PMSA003I | 1 | Particulate Matter |
-| MQ136 | 1 | H2S |
+### Alternative Sensors (No Arduino Needed)
 
-#### Housing & Mounting
-| Component | Quantity | Purpose |
-|-----------|----------|---------|
-| 3D Printed Base | 1 | Component mounting |
-| Poly Case Box with Screws | 1 | Weather protection |
-| Solar Radiation Shield (Accurite) | 1 | Sensor protection |
-| M3 x 20mm Screws | 20 | Assembly |
-| M2 x 20mm Screws | 20 | Assembly |
-
-#### Power (Optional - Mobile/Outdoor)
-| Component | Quantity | Purpose |
-|-----------|----------|---------|
-| Rosewill RBPB-20010 Battery | 1 | Portable power |
+- **Aranet 4** - Bluetooth CO2 monitor (~$250)
+- **Zigbee door/window sensors** - Aqara, Sonoff (~$15 each)
+- **Any Home Assistant-compatible sensor**
 
 ---
 
-## Quick Start
+## Quick Reference
 
-This section gets you from zero to collecting air quality data. Follow the steps in order.
-
-> **Don't have the Arduino and sensors yet?** You can still get started! See [Alternative Sensors Setup](docs/ALTERNATIVE_SENSORS_SETUP.md) to set up:
-> - **Aranet 4** (Bluetooth CO2 monitor)
-> - **Door/window sensors** (Zigbee, Z-Wave, or GPIO)
-> - **Fire tablet display** - works with any sensor setup
->
-> Add the Arduino sensors later when you have them.
-
-### Step 1: Hardware Setup
-
-If you haven't assembled the hardware yet, start with the [Complete Raspberry Pi 4 Setup Guide](docs/RASPBERRY_PI_SETUP.md). This covers:
-- Raspberry Pi initial configuration
-- Arduino Nano wiring to sensors via I2C
-- Physical assembly and housing
-
-**Already have hardware assembled?** Skip to Step 2.
-
-### Step 2: Software Installation
-
-Run these commands on your Raspberry Pi:
+### Essential Commands
 
 ```bash
-# Clone the repository
-git clone https://github.com/ericabelson/Air-quality-sensors.git
-cd Air-quality-sensors
+# Check sensor service status
+sudo systemctl status utsensing
 
-# Create and activate a virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# View live sensor logs
+journalctl -u utsensing -f
 
-# Install Python dependencies
-pip3 install -r requirements.txt
+# Restart sensor service
+sudo systemctl restart utsensing
 
-# Install PlatformIO (for Arduino programming)
-pip3 install platformio
+# Check Home Assistant
+docker ps
+docker logs homeassistant
 
-# Flash the Arduino Nano firmware
-cd firmware/airNano
-pio run -t upload
+# Test MQTT
+mosquitto_sub -h localhost -t "utsensing/#" -v
 ```
 
-**Note:** The virtual environment keeps Python packages isolated from your system. You'll need to activate it each time you open a new terminal:
-```bash
-cd Air-quality-sensors
-source venv/bin/activate
-```
+### Key Directories
 
-**Troubleshooting:** If you encounter issues with PlatformIO or flashing, see [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) for detailed troubleshooting steps.
-
-### Step 3: Start Data Collection
-
-```bash
-# Make sure you're in the project directory with the virtual environment activated
-cd Air-quality-sensors
-source venv/bin/activate
-
-# Run the data collection script
-cd firmware/xu4Mqqt
-./runAll.sh
-```
-
-This script starts the sensor readers in the background. Data is saved to CSV files in `/home/utsensing/utData/raw/` organized by sensor and date.
-
-To run automatically on boot, add to crontab:
-```bash
-crontab -e
-# Add this line (adjust path as needed):
-@reboot cd /path/to/Air-quality-sensors && source venv/bin/activate && cd firmware/xu4Mqqt && ./runAll.sh
-```
-
-### Step 4: View Your Data (Optional)
-
-**Option A: Check the raw files**
-- CSV files: `/home/utsensing/utData/raw/SENSOR_NAME/YYYY/MM/DD/`
-- Latest readings: `/home/utsensing/utData/raw/LATEST_SENSOR_NAME.json`
-
-**Option B: Set up a dashboard**
-See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md) to create real-time visualizations viewable on any device.
-
----
-
-## Documentation
-
-### Setup Guides
-| Document | Description |
-|----------|-------------|
-| [RASPBERRY_PI_SETUP.md](docs/RASPBERRY_PI_SETUP.md) | Complete hardware assembly and Raspberry Pi configuration |
-| [HOME_ASSISTANT_SETUP.md](docs/HOME_ASSISTANT_SETUP.md) | Dashboard setup with MQTT integration |
-| [FIRE_TABLET_SETUP.md](docs/FIRE_TABLET_SETUP.md) | Using an Amazon Fire tablet as a dedicated display |
-| [REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md) | Access your dashboard from anywhere (Nabu Casa, Tailscale, Cloudflare) |
-| [ALTERNATIVE_SENSORS_SETUP.md](docs/ALTERNATIVE_SENSORS_SETUP.md) | **Start without Arduino!** Set up Aranet 4 (Bluetooth CO2), door/window sensors, and get the Fire tablet display working while you wait for the full sensor kit |
-
-### Security
-| Document | Description |
-|----------|-------------|
-| [SECURITY.md](docs/SECURITY.md) | **Important!** Security hardening, network segmentation, SSH/firewall setup |
-
-### Reference
-| Document | Description |
-|----------|-------------|
-| [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) | Sensor datasheets, I2C wiring, calibration procedures |
-| [SENSOR_INTERPRETATION.md](docs/SENSOR_INTERPRETATION.md) | What the sensor readings mean, with formulas and health guidelines |
-
----
-
-## Data Interpretation
-
-### What Do the Numbers Mean?
-
-The system converts raw sensor readings into human-interpretable values:
-
-#### Air Quality Index (PM2.5)
-
-| PM2.5 (μg/m³) | AQI | Category | Health Implications |
-|---------------|-----|----------|---------------------|
-| 0-12 | 0-50 | Good | Air quality is satisfactory |
-| 12.1-35.4 | 51-100 | Moderate | Acceptable; sensitive groups may experience symptoms |
-| 35.5-55.4 | 101-150 | Unhealthy for Sensitive | Sensitive groups should limit outdoor exertion |
-| 55.5-150.4 | 151-200 | Unhealthy | Everyone may begin to experience health effects |
-| 150.5-250.4 | 201-300 | Very Unhealthy | Health alert; everyone may experience serious effects |
-| 250.5+ | 301-500 | Hazardous | Emergency conditions; entire population affected |
-
-#### CO2 Levels (Indoor Air Quality)
-
-| CO2 (ppm) | Status | Meaning |
-|-----------|--------|---------|
-| 400-600 | Excellent | Outdoor-like fresh air |
-| 600-1000 | Good | Well-ventilated space |
-| 1000-1500 | Fair | Ventilation needed |
-| 1500-2500 | Poor | Drowsiness may occur |
-| 2500+ | Bad | Headaches, poor concentration |
-
-See [SENSOR_INTERPRETATION.md](docs/SENSOR_INTERPRETATION.md) for complete formulas and conversion details.
-
----
-
-## Home Assistant Integration
-
-The system publishes sensor data via MQTT, which Home Assistant can consume for dashboards:
-
-```yaml
-# Example: Add CO2 sensor to Home Assistant
-mqtt:
-  sensor:
-    - name: "Air Quality CO2"
-      state_topic: "utsensing/SCD30"
-      value_template: "{{ value_json.co2 }}"
-      unit_of_measurement: "ppm"
-      device_class: carbon_dioxide
-```
-
-The `homeassistant/` folder includes ready-to-use configurations:
-- **packages/**: MQTT sensor definitions for all 7 sensors
-- **dashboards/**: Pre-built dashboard with gauges and graphs
-- **automations/**: Alerts when CO2, PM2.5, or other values exceed thresholds
-
-See [HOME_ASSISTANT_SETUP.md](docs/HOME_ASSISTANT_SETUP.md) for complete setup.
+| Path | Contents |
+|------|----------|
+| `/home/pi/utData/raw/` | CSV sensor data |
+| `/home/pi/homeassistant/` | Home Assistant config |
+| `~/Air-quality-sensors/` | Project repository |
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-
 | Problem | Solution |
 |---------|----------|
-| Arduino not detected | Check USB cable, verify COM port with `ls /dev/ttyUSB*` |
-| Sensor shows "not found" | Verify I2C connections, check with `i2cdetect -y 1` |
-| No data in CSV files | Check permissions on data folder, verify serial connection |
-| MQTT not connecting | Verify broker address and credentials in `mintsDefinitions.py` |
-
-### Diagnostic Commands
-
-```bash
-# Check if Arduino is connected
-ls /dev/ttyUSB*
-
-# Scan I2C bus for sensors
-i2cdetect -y 1
-
-# View real-time serial output
-screen /dev/ttyUSB0 9600
-
-# Check running processes
-ps aux | grep Reader
-```
+| Arduino not detected | Check USB cable, verify with `ls /dev/ttyUSB*` |
+| Sensor shows "not found" | Check I2C connections: `i2cdetect -y 1` |
+| No data in CSV files | Verify service: `sudo systemctl status utsensing` |
+| MQTT not connecting | Check broker: `sudo systemctl status mosquitto` |
+| Dashboard empty | Wait 1-2 minutes, verify MQTT integration |
 
 ---
 
@@ -348,68 +219,41 @@ ps aux | grep Reader
 ```
 Air-quality-sensors/
 ├── README.md                 # This file
-├── LICENSE                   # MIT License
-├── requirements.txt          # Python dependencies
-├── docs/                     # Documentation
-│   ├── RASPBERRY_PI_SETUP.md
-│   ├── TECHNICAL_REFERENCE.md
-│   ├── SENSOR_INTERPRETATION.md
-│   ├── HOME_ASSISTANT_SETUP.md
-│   ├── REMOTE_ACCESS.md
-│   ├── ALTERNATIVE_SENSORS_SETUP.md
-│   ├── FIRE_TABLET_SETUP.md
-│   └── SECURITY.md           # Security hardening guide
-├── scripts/                  # Utility scripts
-│   └── security-hardening.sh # Automated security setup
+├── docs/
+│   ├── RASPBERRY_PI_SETUP.md    # Hardware setup
+│   ├── HOME_ASSISTANT_SETUP.md  # Dashboard setup
+│   ├── FIRE_TABLET_SETUP.md     # Display setup
+│   ├── ALTERNATIVE_SENSORS_SETUP.md  # Non-Arduino sensors
+│   ├── TECHNICAL_REFERENCE.md   # Specs & datasheets
+│   ├── SENSOR_INTERPRETATION.md # Reading explanations
+│   ├── SECURITY.md              # Security hardening
+│   ├── REMOTE_ACCESS.md         # External access
+│   └── setup/                   # Shared setup modules
+│       ├── DOCKER_HOME_ASSISTANT.md
+│       ├── MQTT_SETUP.md
+│       └── PLATFORMIO_ARDUINO.md
 ├── firmware/
-│   ├── airNano/              # Arduino Nano firmware (PlatformIO)
-│   │   ├── src/main.cpp      # Main sensor loop
-│   │   ├── lib/              # Sensor libraries
-│   │   └── platformio.ini    # Build configuration
-│   └── xu4Mqqt/              # Raspberry Pi data collectors
-│       ├── runAll.sh         # Startup script
-│       ├── nanoReader.py     # Reads serial data from Arduino
-│       ├── GPSReader.py      # GPS data (optional)
-│       └── mintsXU4/         # Core Python modules
-│           ├── mintsDefinitions.py   # Port/path configuration
-│           └── mintsSensorReader.py  # Data parsing and CSV output
-├── homeassistant/            # Home Assistant integration
-│   ├── packages/             # MQTT sensor definitions
-│   ├── dashboards/           # UI dashboard configs
-│   └── automations/          # Alert automations
-└── 3DPrints/                 # Housing CAD files
+│   ├── airNano/              # Arduino firmware
+│   └── xu4Mqqt/              # Raspberry Pi scripts
+├── homeassistant/            # Dashboard configs
+└── scripts/                  # Utility scripts
 ```
 
 ---
 
 ## Contributing
 
-We welcome contributions! Please:
-
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/new-sensor`)
-3. Commit your changes (`git commit -am 'Add new sensor support'`)
-4. Push to the branch (`git push origin feature/new-sensor`)
+3. Commit your changes
+4. Push to the branch
 5. Create a Pull Request
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-```
-MIT License
-Copyright (c) 2021 MINTS
-```
-
----
-
-## Acknowledgments
-
-- Multi-scale Integrated Sensing and Simulation (MINTS) group at UT Dallas
-- Lakitha Omal Harindha Wijeratne - Original author
-- All contributors and the open-source community
+MIT License - see [LICENSE](LICENSE) file.
 
 ---
 

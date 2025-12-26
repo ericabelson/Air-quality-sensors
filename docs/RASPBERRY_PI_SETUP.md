@@ -253,41 +253,25 @@ Wait 1-2 minutes, then SSH back in.
 
 ### Step 3.4: Install PlatformIO (for Arduino programming)
 
-**What is PlatformIO?**
-PlatformIO is a professional development tool for embedded systems that replaces the Arduino IDE. It's faster, more reliable, and works perfectly on a headless Raspberry Pi.
+For detailed instructions, see [PlatformIO & Arduino Setup](setup/PLATFORMIO_ARDUINO.md).
 
-**Official Website:** [https://platformio.org](https://platformio.org)
-**Documentation:** [https://docs.platformio.org](https://docs.platformio.org)
-
-Install PlatformIO Core (command-line version):
+**Quick version:**
 
 ```bash
+# Install PlatformIO
 pip3 install platformio
-```
 
-This will download and install PlatformIO. **It may take 2-5 minutes.**
-
-Add PlatformIO to your PATH so you can run it from anywhere:
-```bash
+# Add to PATH
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-```
 
-**Verify installation:**
-```bash
+# Verify installation
 pio --version
 ```
 
-You should see output like: `PlatformIO Core, version X.X.X`
+You should see: `PlatformIO Core, version X.X.X`
 
-**If the `pio` command is not found:**
-- Log out and back in (SSH disconnect and reconnect)
-- Or manually add to PATH: `export PATH="$HOME/.local/bin:$PATH"`
-
-**Troubleshooting:**
-- **"Command not found"**: Ensure ~/.local/bin is in PATH (check with `echo $PATH`)
-- **Permission denied**: Don't use sudo with pip3
-- **Installation failed**: Ensure Python 3 is installed (`python3 --version`)
+**If command not found:** Log out and back in, or run `export PATH="$HOME/.local/bin:$PATH"`
 
 ### Step 3.5: Clone the Repository
 
@@ -548,44 +532,35 @@ sudo systemctl status utsensing
 
 ## Part 7: Install Home Assistant Dashboard
 
-### Step 7.1: Install Home Assistant
+Follow the [Docker & Home Assistant Setup](setup/DOCKER_HOME_ASSISTANT.md) module, then configure the dashboard with [Home Assistant Setup](HOME_ASSISTANT_SETUP.md).
+
+**Quick version:**
 
 ```bash
 # Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 sudo usermod -aG docker pi
+logout
+```
 
-# Log out and back in
-exit
-# SSH back in
+SSH back in:
 
-# Install Home Assistant Container
+```bash
+mkdir -p ~/homeassistant
 docker run -d \
   --name homeassistant \
   --privileged \
   --restart=unless-stopped \
   -e TZ=America/Chicago \
-  -v /home/pi/homeassistant:/config \
+  -v ~/homeassistant:/config \
   --network=host \
   ghcr.io/home-assistant/home-assistant:stable
 ```
 
-Wait 5-10 minutes for initial setup.
+Wait 5-10 minutes, then access: `http://[YOUR_PI_IP]:8123`
 
-### Step 7.2: Access Home Assistant
-
-Open a web browser and go to:
-
-```
-http://[YOUR_PI_IP]:8123
-```
-
-Follow the onboarding wizard to create an account.
-
-### Step 7.3: Configure Sensor Integration
-
-See [HOME_ASSISTANT_SETUP.md](HOME_ASSISTANT_SETUP.md) for detailed dashboard configuration.
+**Next:** See [Home Assistant Setup](HOME_ASSISTANT_SETUP.md) to configure MQTT and the dashboard.
 
 ---
 
