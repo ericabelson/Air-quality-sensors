@@ -269,7 +269,7 @@ Create a systemd service:
 sudo nano /etc/systemd/system/ws3000.service
 ```
 
-Paste (replace `demeter` with your username if different):
+Paste (replace `pi` with your username if different):
 
 ```ini
 [Unit]
@@ -278,9 +278,9 @@ After=network.target mosquitto.service
 
 [Service]
 Type=simple
-User=demeter
-WorkingDirectory=/home/demeter/ws3000
-ExecStart=/usr/bin/node /home/demeter/ws3000/ws3000-mqtt.js
+User=pi
+WorkingDirectory=/home/pi/ws3000
+ExecStart=/usr/bin/node /home/pi/ws3000/ws3000-mqtt.js
 Restart=always
 RestartSec=10
 

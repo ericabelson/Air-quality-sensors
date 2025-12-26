@@ -13,6 +13,6 @@
 */10 * * * * cd /home/pi/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
 
 # Optional: Local backup to USB drive (uncomment and modify path if desired)
-# */30 * * * * rsync -av /home/utsensing/utData/raw/ /media/pi/BACKUP_USB/utsensing-backup/
+# */30 * * * * rsync -av /home/pi/utData/raw/ /media/pi/BACKUP_USB/sensor-backup/
 
 

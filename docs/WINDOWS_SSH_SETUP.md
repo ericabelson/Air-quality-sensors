@@ -51,7 +51,7 @@ If your Windows version supports `ssh-copy-id`, use this method:
 
 ```powershell
 # Replace with your Raspberry Pi's IP address and username
-ssh-copy-id demeter@192.168.68.116
+ssh-copy-id pi@192.168.1.100
 ```
 
 Enter your Raspberry Pi password when prompted.
@@ -76,7 +76,7 @@ type $env:USERPROFILE\.ssh\id_ed25519.pub
 3. **SSH into your Raspberry Pi** with password:
 
 ```powershell
-ssh demeter@192.168.68.116
+ssh pi@192.168.1.100
 ```
 
 4. **On the Raspberry Pi**, create the .ssh directory (if it doesn't exist):
@@ -115,7 +115,7 @@ exit
 From PowerShell on Windows:
 
 ```powershell
-ssh demeter@192.168.68.116
+ssh pi@192.168.1.100
 ```
 
 **Success:** You should connect WITHOUT being asked for a password!
@@ -133,7 +133,7 @@ ssh demeter@192.168.68.116
 1. SSH into your Raspberry Pi (should use key now):
 
 ```powershell
-ssh demeter@192.168.68.116
+ssh pi@192.168.1.100
 ```
 
 2. Edit SSH configuration:
@@ -161,7 +161,7 @@ sudo systemctl restart ssh
 6. **IMPORTANT:** Open a NEW PowerShell window and test SSH key login BEFORE closing your current session!
 
 ```powershell
-ssh demeter@192.168.68.116
+ssh pi@192.168.1.100
 ```
 
 If successful, your Raspberry Pi now only accepts SSH keys, not passwords.
@@ -183,7 +183,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 # Check ownership
 ls -la ~/.ssh
-# Should show: drwx------ demeter demeter
+# Should show: drwx------ pi pi
 ```
 
 ### Problem: "Permission denied (publickey)" after disabling passwords
@@ -239,7 +239,7 @@ If you prefer PuTTY over PowerShell:
 6. Follow Step 2 Method B to add the public key to your Pi
 
 7. In PuTTY:
-   - Session → Enter `demeter@192.168.68.116`
+   - Session → Enter `pi@192.168.1.100`
    - Connection → SSH → Auth → Browse → Select your `.ppk` file
    - Session → Save session with a name
 
@@ -266,17 +266,17 @@ After setting up SSH keys:
 
 ### Connect from Windows PowerShell:
 ```powershell
-ssh demeter@192.168.68.116
+ssh pi@192.168.1.100
 ```
 
 ### Copy files to Pi:
 ```powershell
-scp myfile.txt demeter@192.168.68.116:/home/demeter/
+scp myfile.txt pi@192.168.1.100:/home/demeter/
 ```
 
 ### Copy files from Pi:
 ```powershell
-scp demeter@192.168.68.116:/home/demeter/myfile.txt C:\Users\YourName\Desktop\
+scp pi@192.168.1.100:/home/demeter/myfile.txt C:\Users\YourName\Desktop\
 ```
 
 ---
@@ -299,7 +299,7 @@ If you encounter issues:
 1. Check the [Troubleshooting](#troubleshooting) section above
 2. Check SSH connection verbosity:
    ```powershell
-   ssh -v demeter@192.168.68.116
+   ssh -v pi@192.168.1.100
    ```
 3. On Raspberry Pi, check SSH logs:
    ```bash
