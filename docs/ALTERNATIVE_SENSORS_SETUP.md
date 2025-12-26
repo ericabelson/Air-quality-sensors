@@ -1004,6 +1004,7 @@ Once you're comfortable with this setup:
 
 ## Related Documentation
 
+- [WS 3000 X5 Setup](WS3000_SETUP.md) - Ambient Weather wireless thermo-hygrometer via USB
 - [Home Assistant Setup](HOME_ASSISTANT_SETUP.md) - Full MQTT integration for Arduino sensors
 - [Fire Tablet Setup](FIRE_TABLET_SETUP.md) - Detailed tablet configuration
 - [Raspberry Pi Setup](RASPBERRY_PI_SETUP.md) - Hardware assembly for Arduino kit
