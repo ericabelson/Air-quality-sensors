@@ -6,7 +6,7 @@ import yaml
 
 credentials = yaml.load(open('./credentials.yml'))
 connected   = False  # Stores the connection status
-broker      = "mqtt.circ.utdallas.edu"
+broker      = "mqtt.example.com"
 port        = 8883  # Secure port
 mqttUN      = credentials['mqtt']['username']  # Put here your Ubidots TOKEN
 mqttPW      = credentials['mqtt']['password'] # Leave this in blank

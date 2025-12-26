@@ -67,10 +67,10 @@ def findMacAddress():
 
 
 
-dataFolderReference       = "/home/utsensing/utData/reference"
-dataFolderMQTTReference   = "/home/utsensing/utData/referenceMQTT"
-dataFolder                = "/home/utsensing/utData/raw"
-dataFolderMQTT            = "/home/utsensing/utData/rawMQTT"
+dataFolderReference       = "/home/pi/utData/reference"
+dataFolderMQTTReference   = "/home/pi/utData/referenceMQTT"
+dataFolder                = "/home/pi/utData/raw"
+dataFolderMQTT            = "/home/pi/utData/rawMQTT"
 
 duePort               = findDuePort()
 nanoPorts             = findNanoPorts()

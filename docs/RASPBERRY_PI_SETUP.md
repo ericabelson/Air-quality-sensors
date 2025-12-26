@@ -410,9 +410,9 @@ ch341-uart converter now attached to ttyUSB0
 ### Step 4.1: Set Up Data Directories
 
 ```bash
-sudo mkdir -p /home/utsensing/utData/raw
-sudo mkdir -p /home/utsensing/utData/reference
-sudo chown -R pi:pi /home/utsensing
+sudo mkdir -p /home/pi/utData/raw
+sudo mkdir -p /home/pi/utData/reference
+sudo chown -R pi:pi /home/pi
 ```
 
 ### Step 4.2: Configure Definitions
@@ -427,8 +427,8 @@ Update these lines:
 
 ```python
 # Change data folder to match your setup
-dataFolder = "/home/utsensing/utData/raw"
-dataFolderReference = "/home/utsensing/utData/reference"
+dataFolder = "/home/pi/utData/raw"
+dataFolderReference = "/home/pi/utData/reference"
 
 # Set to True to enable features
 latestOn = True          # Enable JSON output
@@ -476,7 +476,7 @@ Press `Ctrl+C` to stop.
 ### Step 5.2: Check Data Files
 
 ```bash
-ls -la /home/utsensing/utData/raw/
+ls -la /home/pi/utData/raw/
 ```
 
 You should see a folder named with your Pi's MAC address.
@@ -484,7 +484,7 @@ You should see a folder named with your Pi's MAC address.
 ### Step 5.3: Check JSON Output
 
 ```bash
-cat /home/utsensing/utData/raw/*/BME680.json
+cat /home/pi/utData/raw/*/BME680.json
 ```
 
 **Expected output:**
@@ -645,7 +645,7 @@ pip3 install -r requirements.txt
 
 ```bash
 sudo chmod 666 /dev/ttyUSB0
-sudo usermod -a -G dialout pi  # Or: sudo usermod -a -G dialout demeter
+sudo usermod -a -G dialout pi
 # Log out and back in
 ```
 
@@ -680,7 +680,7 @@ sudo usermod -a -G dialout pi  # Or: sudo usermod -a -G dialout demeter
 
 3. Verify data directory exists:
    ```bash
-   ls -la /home/utsensing/utData/raw/
+   ls -la /home/pi/utData/raw/
    ```
 
 ### Problem: Wrong sensor readings
@@ -763,7 +763,7 @@ ssh-keygen -t ed25519 -C "air-quality-pi"
 
 # Copy to your Pi
 ssh-copy-id pi@[YOUR_PI_IP]
-# Or: ssh-copy-id demeter@[YOUR_PI_IP]
+# Use your username if different from 'pi'
 ```
 
 **Test it works:**
@@ -850,7 +850,7 @@ Verify no old or unauthorized scheduled tasks are running:
 
 ```bash
 # Check cron jobs for all common users
-sudo crontab -u demeter -l 2>/dev/null || echo "No crontab for demeter"
+sudo crontab -u pi -l 2>/dev/null || echo "No crontab for demeter"
 sudo crontab -u pi -l 2>/dev/null || echo "No crontab for pi"
 sudo crontab -u root -l 2>/dev/null || echo "No crontab for root"
 ```
@@ -894,7 +894,7 @@ sudo systemctl restart sshd
 **CRITICAL:** Open a NEW PowerShell/terminal window and test SSH login BEFORE closing your current session:
 
 ```bash
-ssh demeter@192.168.68.116
+ssh pi@192.168.1.100
 # Should connect using SSH key without asking for password!
 ```
 
@@ -949,7 +949,7 @@ sudo fail2ban-client status sshd | grep "Currently banned"
 sudo systemctl is-enabled unattended-upgrades
 
 # 4. Verify no unexpected cron jobs
-sudo crontab -u demeter -l 2>/dev/null || echo "✓ No crontab for demeter"
+sudo crontab -u pi -l 2>/dev/null || echo "✓ No crontab for demeter"
 sudo crontab -u pi -l 2>/dev/null || echo "✓ No crontab for pi"
 
 # 5. Verify SSH key authentication works
@@ -995,7 +995,7 @@ Congratulations! Your air quality monitor is now running!
 **SSH Connection:**
 ```bash
 # From Windows PowerShell or Mac/Linux Terminal
-ssh demeter@192.168.68.116
+ssh pi@192.168.1.100
 ```
 
 **Activate Virtual Environment:**
@@ -1019,11 +1019,11 @@ sudo systemctl restart utsensing
 **View Sensor Data:**
 ```bash
 # List data folders
-ls -la /home/utsensing/utData/raw/
+ls -la /home/pi/utData/raw/
 
 # View latest readings (JSON format)
-cat /home/utsensing/utData/raw/*/BME680.json
-cat /home/utsensing/utData/raw/*/SCD30.json
+cat /home/pi/utData/raw/*/BME680.json
+cat /home/pi/utData/raw/*/SCD30.json
 ```
 
 **Security Checks:**
@@ -1035,7 +1035,7 @@ sudo ufw status
 sudo fail2ban-client status sshd
 
 # Check for unauthorized cron jobs
-sudo crontab -u demeter -l 2>/dev/null || echo "No crontab"
+sudo crontab -u pi -l 2>/dev/null || echo "No crontab"
 ```
 
 **Update Repository:**
@@ -1047,7 +1047,7 @@ git pull origin main
 **Home Assistant:**
 ```bash
 # Access dashboard
-http://192.168.68.116:8123
+http://192.168.1.100:8123
 
 # Check container status
 docker ps
