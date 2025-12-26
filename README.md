@@ -245,6 +245,7 @@ See [Home Assistant Dashboard Setup](docs/HOME_ASSISTANT_SETUP.md) to create rea
 | [FIRE_TABLET_SETUP.md](docs/FIRE_TABLET_SETUP.md) | Using an Amazon Fire tablet as a dedicated display |
 | [REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md) | Access your dashboard from anywhere (Nabu Casa, Tailscale, Cloudflare) |
 | [ALTERNATIVE_SENSORS_SETUP.md](docs/ALTERNATIVE_SENSORS_SETUP.md) | **Start without Arduino!** Set up Aranet 4 (Bluetooth CO2), door/window sensors, and get the Fire tablet display working while you wait for the full sensor kit |
+| [DOOR_SENSORS_AND_SPEAKER_SETUP.md](docs/DOOR_SENSORS_AND_SPEAKER_SETUP.md) | Zooz Z-Wave door sensors and Dome smart speaker with alarm modes (away/home/sleep) |
 
 ### Security
 | Document | Description |
@@ -357,6 +358,7 @@ Air-quality-sensors/
 │   ├── HOME_ASSISTANT_SETUP.md
 │   ├── REMOTE_ACCESS.md
 │   ├── ALTERNATIVE_SENSORS_SETUP.md
+│   ├── DOOR_SENSORS_AND_SPEAKER_SETUP.md
 │   ├── FIRE_TABLET_SETUP.md
 │   └── SECURITY.md           # Security hardening guide
 ├── scripts/                  # Utility scripts
