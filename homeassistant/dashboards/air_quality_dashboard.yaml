@@ -446,3 +446,216 @@ views:
                 name: CO
               - entity: sensor.air_quality_no2
                 name: NO₂
+
+  # =========================================================================
+  # AUDIO VIEW - Sonos Speaker Control
+  # =========================================================================
+  - title: Audio
+    path: audio
+    icon: mdi:speaker
+    badges: []
+    cards:
+      # Header
+      - type: markdown
+        content: |
+          # Sonos Speakers
+          Control music across all speakers
+        card_mod:
+          style: |
+            ha-card {
+              background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
+              color: white;
+            }
+
+      # =========================================================================
+      # ACTIVE PLAYBACK SECTION - Show what's playing
+      # =========================================================================
+      - type: horizontal-stack
+        cards:
+          # Speaker Status Row
+          - type: glance
+            title: Speaker Status
+            show_name: true
+            show_icon: true
+            show_state: true
+            columns: 3
+            entities:
+              - entity: media_player.diurnal
+                name: Diurnal
+              - entity: media_player.ickyah
+                name: Ickyah
+              - entity: media_player.nocturnal
+                name: Nocturnal
+
+      # =========================================================================
+      # DIURNAL SPEAKER - Full Control
+      # =========================================================================
+      - type: custom:mushroom-media-player-card
+        entity: media_player.diurnal
+        name: Diurnal Speaker
+        icon: mdi:speaker
+        primary_info: media-title
+        secondary_info: media-artist
+        show_volume_level: true
+        volume_controls:
+          - volume-set
+          - volume-buttons
+        media_controls:
+          - play-pause-stop
+          - next
+          - previous
+        card_mod:
+          style: |
+            ha-card {
+              background: linear-gradient(135deg, rgba(26, 35, 126, 0.8), rgba(13, 71, 161, 0.8));
+            }
+
+      # =========================================================================
+      # ICKYAH SPEAKER - Full Control
+      # =========================================================================
+      - type: custom:mushroom-media-player-card
+        entity: media_player.ickyah
+        name: Ickyah Speaker
+        icon: mdi:speaker
+        primary_info: media-title
+        secondary_info: media-artist
+        show_volume_level: true
+        volume_controls:
+          - volume-set
+          - volume-buttons
+        media_controls:
+          - play-pause-stop
+          - next
+          - previous
+        card_mod:
+          style: |
+            ha-card {
+              background: linear-gradient(135deg, rgba(26, 35, 126, 0.8), rgba(13, 71, 161, 0.8));
+            }
+
+      # =========================================================================
+      # NOCTURNAL SPEAKER - Full Control
+      # =========================================================================
+      - type: custom:mushroom-media-player-card
+        entity: media_player.nocturnal
+        name: Nocturnal Speaker
+        icon: mdi:speaker
+        primary_info: media-title
+        secondary_info: media-artist
+        show_volume_level: true
+        volume_controls:
+          - volume-set
+          - volume-buttons
+        media_controls:
+          - play-pause-stop
+          - next
+          - previous
+        card_mod:
+          style: |
+            ha-card {
+              background: linear-gradient(135deg, rgba(26, 35, 126, 0.8), rgba(13, 71, 161, 0.8));
+            }
+
+      # =========================================================================
+      # SPEAKER GROUPING SECTION - Control which speakers play together
+      # =========================================================================
+      - type: markdown
+        content: |
+          ## Speaker Grouping
+          Tap to group/ungroup speakers for synchronized playback
+
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: media_player.diurnal
+            name: Group Diurnal
+            icon: mdi:link-variant
+            tap_action:
+              action: call-service
+              service: media_player.join
+              service_data:
+                entity_id: media_player.diurnal
+                group_members:
+                  - media_player.diurnal
+                  - media_player.ickyah
+                  - media_player.nocturnal
+
+          - type: button
+            entity: media_player.diurnal
+            name: Ungroup All
+            icon: mdi:link-variant-off
+            tap_action:
+              action: call-service
+              service: media_player.unjoin
+              service_data:
+                entity_id:
+                  - media_player.diurnal
+                  - media_player.ickyah
+                  - media_player.nocturnal
+
+      # =========================================================================
+      # DETAILED VOLUME CONTROL
+      # =========================================================================
+      - type: markdown
+        content: |
+          ## Individual Volume Control
+          Adjust volume for each speaker independently
+
+      - type: entities
+        title: Volume Levels
+        entities:
+          - entity: media_player.diurnal
+            name: Diurnal Volume
+            attribute: volume_level
+          - entity: media_player.ickyah
+            name: Ickyah Volume
+            attribute: volume_level
+          - entity: media_player.nocturnal
+            name: Nocturnal Volume
+            attribute: volume_level
+
+      # =========================================================================
+      # PLAYBACK CONTROLS
+      # =========================================================================
+      - type: markdown
+        content: |
+          ## Quick Controls
+          Use these buttons to control playback on all speakers
+
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Play All
+            icon: mdi:play
+            tap_action:
+              action: call-service
+              service: media_player.media_play
+              service_data:
+                entity_id:
+                  - media_player.diurnal
+                  - media_player.ickyah
+                  - media_player.nocturnal
+
+          - type: button
+            name: Pause All
+            icon: mdi:pause
+            tap_action:
+              action: call-service
+              service: media_player.media_pause
+              service_data:
+                entity_id:
+                  - media_player.diurnal
+                  - media_player.ickyah
+                  - media_player.nocturnal
+
+          - type: button
+            name: Next Track
+            icon: mdi:skip-next
+            tap_action:
+              action: call-service
+              service: media_player.media_next_track
+              service_data:
+                entity_id:
+                  - media_player.diurnal
+                  - media_player.ickyah
+                  - media_player.nocturnal
