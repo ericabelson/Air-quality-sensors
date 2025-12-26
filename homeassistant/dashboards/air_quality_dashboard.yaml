@@ -209,6 +209,34 @@ views:
             name: AQI
 
   # =========================================================================
+  # TEMPERATURES VIEW - WS3000 Color-Coded Temperatures
+  # =========================================================================
+  - title: Temperatures
+    path: temperatures
+    icon: mdi:thermometer
+    badges: []
+    cards:
+      - type: markdown
+        content: |
+          # Temperature Monitor
+          **Color Legend:** Blue (cold ≤65°F) → Yellow (65-75°F) → Red (hot ≥75°F)
+
+      # Main Temperature Graph with Color Coding
+      - type: history-graph
+        title: Temperature Trends (72 hours)
+        hours_to_show: 72
+        refresh_interval: 60
+        entities:
+          - entity: sensor.ws3000_sensor_1_temperature_colored
+            name: Outside
+          - entity: sensor.ws3000_sensor_4_temperature_colored
+            name: Inside
+          - entity: sensor.ws3000_sensor_2_temperature_colored
+            name: UnderHouse
+          - entity: sensor.ws3000_sensor_3_temperature_colored
+            name: Attic
+
+  # =========================================================================
   # DETAILS VIEW - All Sensor Data
   # =========================================================================
   - title: Details
