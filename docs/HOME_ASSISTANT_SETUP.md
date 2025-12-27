@@ -319,6 +319,14 @@ Or go to **Developer Tools** → **YAML** → **Check Configuration** → **Rest
 
 ### Step 2: Add the Dashboard YAML
 
+**Why use Raw Configuration Editor?** Home Assistant has two ways to edit dashboards:
+- **Visual editor** (the UI with "Create Section", "Add Card" buttons) - Good for simple customization
+- **Raw configuration editor** (YAML) - Required to paste a complete dashboard layout like the one below
+
+We're using the raw editor because it's faster and ensures the dashboard layout is exactly right.
+
+**Steps:**
+
 1. Open the new dashboard
 2. Click the three dots (⋮) → **Edit Dashboard**
 3. Click the three dots again → **Raw configuration editor**
