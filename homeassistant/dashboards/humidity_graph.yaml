@@ -1,0 +1,13 @@
+type: history-graph
+title: Humidity
+hours_to_show: 72
+refresh_interval: 60
+entities:
+  - entity: sensor.ws3000_sensor_1_humidity_colored
+    name: Outside
+  - entity: sensor.ws3000_sensor_4_humidity_colored
+    name: Inside
+  - entity: sensor.ws3000_sensor_2_humidity_colored
+    name: UnderHouse
+  - entity: sensor.ws3000_sensor_3_humidity_colored
+    name: Attic
