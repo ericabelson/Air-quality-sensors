@@ -713,6 +713,38 @@ print(f"R0 calibration value: {R0} Ω")
 
 ## Wiring Diagrams
 
+### Wire Color Reference (Grove I2C Hub to Arduino Nano)
+
+When connecting the Grove I2C Hub to the Arduino Nano, use the following wire color coding:
+
+| Wire Color | Arduino Pin | Function |
+|------------|-------------|----------|
+| **Black** | GND | Ground |
+| **Red** | 5V | Power (5 volts) |
+| **Yellow** | A5 | SCL (I2C clock) |
+| **White** | A4 | SDA (I2C data) |
+| **Green** | A0 | Analog input (MQ136 H2S sensor) |
+
+```
+Grove I2C Hub                    Arduino Nano
+┌─────────────┐                 ┌─────────────┐
+│             │                 │             │
+│  Black  ●───┼────────────────►│ GND         │
+│  Red    ●───┼────────────────►│ 5V          │
+│  Yellow ●───┼────────────────►│ A5 (SCL)    │
+│  White  ●───┼────────────────►│ A4 (SDA)    │
+│             │                 │             │
+└─────────────┘                 │             │
+                                │             │
+MQ136 Sensor                    │             │
+┌─────────────┐                 │             │
+│  Green  ●───┼────────────────►│ A0 (Analog) │
+│  (signal)   │                 │             │
+└─────────────┘                 └─────────────┘
+```
+
+**Note:** The green wire for A0 comes from the MQ136 H2S sensor's signal output, not the Grove I2C Hub. The I2C Hub only uses 4 wires (Black, Red, Yellow, White).
+
 ### I2C Bus Wiring (All Digital Sensors)
 
 ```
