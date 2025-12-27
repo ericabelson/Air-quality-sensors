@@ -321,6 +321,77 @@ template:
             0
           {% endif %}
 
+      # ==========================================================================
+      # WS3000 Temperature Sensors with Dynamic Colors
+      # ==========================================================================
+      # Temperature color mapping:
+      # < 50°F = Dark blue (#0D47A1)
+      # 50-60°F = Medium blue (#1976D2)
+      # 60-65°F = Light blue (#42A5F5)
+      # 65-75°F = Yellow (#FFEB3B)
+      # 75-85°F = Orange (#FF9800)
+      # > 85°F = Deep red (#D32F2F)
+
+      - name: "WS3000 Sensor 1 Temperature Colored"
+        unique_id: ws3000_sensor_1_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_1_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_1_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 2 Temperature Colored"
+        unique_id: ws3000_sensor_2_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_2_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_2_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 3 Temperature Colored"
+        unique_id: ws3000_sensor_3_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_3_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_3_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 4 Temperature Colored"
+        unique_id: ws3000_sensor_4_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_4_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_4_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
 # =============================================================================
 # Input Numbers for Threshold Configuration
 # =============================================================================
