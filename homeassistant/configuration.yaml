@@ -1,0 +1,484 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+homeassistant:
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks:
+        - 192.168.68.0/24
+      allow_bypass_login: true
+    - type: homeassistant
+
+
+
+mqtt:
+  sensor:
+    # WS3000 Sensor 1
+    - name: "WS3000 Sensor 1 Temperature"
+      state_topic: "ws3000/sensor_1"
+      value_template: "{{ value_json.temperature }}"
+      unit_of_measurement: "°F"
+      device_class: temperature
+
+    - name: "WS3000 Sensor 1 Humidity"
+      state_topic: "ws3000/sensor_1"
+      value_template: "{{ value_json.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+
+    # WS3000 Sensor 2
+    - name: "WS3000 Sensor 2 Temperature"
+      state_topic: "ws3000/sensor_2"
+      value_template: "{{ value_json.temperature }}"
+      unit_of_measurement: "°F"
+      device_class: temperature
+
+    - name: "WS3000 Sensor 2 Humidity"
+      state_topic: "ws3000/sensor_2"
+      value_template: "{{ value_json.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+
+    # WS3000 Sensor 3
+    - name: "WS3000 Sensor 3 Temperature"
+      state_topic: "ws3000/sensor_3"
+      value_template: "{{ value_json.temperature }}"
+      unit_of_measurement: "°F"
+      device_class: temperature
+
+    - name: "WS3000 Sensor 3 Humidity"
+      state_topic: "ws3000/sensor_3"
+      value_template: "{{ value_json.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+
+    # WS3000 Sensor 4
+    - name: "WS3000 Sensor 4 Temperature"
+      state_topic: "ws3000/sensor_4"
+      value_template: "{{ value_json.temperature }}"
+      unit_of_measurement: "°F"
+      device_class: temperature
+
+    - name: "WS3000 Sensor 4 Humidity"
+      state_topic: "ws3000/sensor_4"
+      value_template: "{{ value_json.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+
+    # WS3000 Sensor 5
+    - name: "WS3000 Sensor 5 Temperature"
+      state_topic: "ws3000/sensor_5"
+      value_template: "{{ value_json.temperature }}"
+      unit_of_measurement: "°F"
+      device_class: temperature
+
+    - name: "WS3000 Sensor 5 Humidity"
+      state_topic: "ws3000/sensor_5"
+      value_template: "{{ value_json.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+
+    # WS3000 Sensor 6
+    - name: "WS3000 Sensor 6 Temperature"
+      state_topic: "ws3000/sensor_6"
+      value_template: "{{ value_json.temperature }}"
+      unit_of_measurement: "°F"
+      device_class: temperature
+
+    - name: "WS3000 Sensor 6 Humidity"
+      state_topic: "ws3000/sensor_6"
+      value_template: "{{ value_json.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+
+
+template:
+  - sensor:
+      # ======================================
+      # TEMPERATURE COLORED SENSORS
+      # ======================================
+      - name: "WS3000 Sensor 1 Temperature Colored"
+        unique_id: ws3000_sensor_1_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_1_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_1_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 2 Temperature Colored"
+        unique_id: ws3000_sensor_2_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_2_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_2_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 3 Temperature Colored"
+        unique_id: ws3000_sensor_3_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_3_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_3_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 4 Temperature Colored"
+        unique_id: ws3000_sensor_4_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_4_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_4_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 5 Temperature Colored"
+        unique_id: ws3000_sensor_5_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_5_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_5_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 6 Temperature Colored"
+        unique_id: ws3000_sensor_6_temp_colored
+        unit_of_measurement: "°F"
+        icon: mdi:thermometer
+        state: "{{ states('sensor.ws3000_sensor_6_temperature') }}"
+        attributes:
+          color: >
+            {% set temp = states('sensor.ws3000_sensor_6_temperature') | float(0) %}
+            {% if temp < 50 %}#0D47A1
+            {% elif temp < 60 %}#1976D2
+            {% elif temp < 65 %}#42A5F5
+            {% elif temp < 75 %}#FFEB3B
+            {% elif temp < 85 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      # ======================================
+      # HUMIDITY COLORED SENSORS
+      # ======================================
+      - name: "WS3000 Sensor 1 Humidity Colored"
+        unique_id: ws3000_sensor_1_humidity_colored
+        unit_of_measurement: "%"
+        icon: mdi:water-percent
+        state: "{{ states('sensor.ws3000_sensor_1_humidity') }}"
+        attributes:
+          color: >
+            {% set humidity = states('sensor.ws3000_sensor_1_humidity') | float(0) %}
+            {% if humidity < 30 %}#D32F2F
+            {% elif humidity < 40 %}#FF9800
+            {% elif humidity < 50 %}#FFEB3B
+            {% elif humidity < 60 %}#8BC34A
+            {% elif humidity < 70 %}#42A5F5
+            {% else %}#1976D2{% endif %}
+
+      - name: "WS3000 Sensor 2 Humidity Colored"
+        unique_id: ws3000_sensor_2_humidity_colored
+        unit_of_measurement: "%"
+        icon: mdi:water-percent
+        state: "{{ states('sensor.ws3000_sensor_2_humidity') }}"
+        attributes:
+          color: >
+            {% set humidity = states('sensor.ws3000_sensor_2_humidity') | float(0) %}
+            {% if humidity < 30 %}#D32F2F
+            {% elif humidity < 40 %}#FF9800
+            {% elif humidity < 50 %}#FFEB3B
+            {% elif humidity < 60 %}#8BC34A
+            {% elif humidity < 70 %}#42A5F5
+            {% else %}#1976D2{% endif %}
+
+      - name: "WS3000 Sensor 3 Humidity Colored"
+        unique_id: ws3000_sensor_3_humidity_colored
+        unit_of_measurement: "%"
+        icon: mdi:water-percent
+        state: "{{ states('sensor.ws3000_sensor_3_humidity') }}"
+        attributes:
+          color: >
+            {% set humidity = states('sensor.ws3000_sensor_3_humidity') | float(0) %}
+            {% if humidity < 30 %}#D32F2F
+            {% elif humidity < 40 %}#FF9800
+            {% elif humidity < 50 %}#FFEB3B
+            {% elif humidity < 60 %}#8BC34A
+            {% elif humidity < 70 %}#42A5F5
+            {% else %}#1976D2{% endif %}
+
+      - name: "WS3000 Sensor 4 Humidity Colored"
+        unique_id: ws3000_sensor_4_humidity_colored
+        unit_of_measurement: "%"
+        icon: mdi:water-percent
+        state: "{{ states('sensor.ws3000_sensor_4_humidity') }}"
+        attributes:
+          color: >
+            {% set humidity = states('sensor.ws3000_sensor_4_humidity') | float(0) %}
+            {% if humidity < 30 %}#D32F2F
+            {% elif humidity < 40 %}#FF9800
+            {% elif humidity < 50 %}#FFEB3B
+            {% elif humidity < 60 %}#8BC34A
+            {% elif humidity < 70 %}#42A5F5
+            {% else %}#1976D2{% endif %}
+
+      - name: "WS3000 Sensor 5 Humidity Colored"
+        unique_id: ws3000_sensor_5_humidity_colored
+        unit_of_measurement: "%"
+        icon: mdi:water-percent
+        state: "{{ states('sensor.ws3000_sensor_5_humidity') }}"
+        attributes:
+          color: >
+            {% set humidity = states('sensor.ws3000_sensor_5_humidity') | float(0) %}
+            {% if humidity < 30 %}#D32F2F
+            {% elif humidity < 40 %}#FF9800
+            {% elif humidity < 50 %}#FFEB3B
+            {% elif humidity < 60 %}#8BC34A
+            {% elif humidity < 70 %}#42A5F5
+            {% else %}#1976D2{% endif %}
+
+      - name: "WS3000 Sensor 6 Humidity Colored"
+        unique_id: ws3000_sensor_6_humidity_colored
+        unit_of_measurement: "%"
+        icon: mdi:water-percent
+        state: "{{ states('sensor.ws3000_sensor_6_humidity') }}"
+        attributes:
+          color: >
+            {% set humidity = states('sensor.ws3000_sensor_6_humidity') | float(0) %}
+            {% if humidity < 30 %}#D32F2F
+            {% elif humidity < 40 %}#FF9800
+            {% elif humidity < 50 %}#FFEB3B
+            {% elif humidity < 60 %}#8BC34A
+            {% elif humidity < 70 %}#42A5F5
+            {% else %}#1976D2{% endif %}
+
+      # ======================================
+      # DEW POINT SENSORS
+      # Calculated using Magnus formula for dew point
+      # Td = (b × α(T,RH)) / (a - α(T,RH))
+      # where α(T,RH) = ln(RH/100) + aT/(b+T)
+      # Constants: a = 17.27, b = 237.7°C
+      # Temperature converted from °F to °C for calculation
+      # Result converted back to °F
+      # ======================================
+      - name: "WS3000 Sensor 1 Dew Point"
+        unique_id: ws3000_sensor_1_dew_point
+        unit_of_measurement: "°F"
+        icon: mdi:water-thermometer
+        state: >
+          {% set temp_f = states('sensor.ws3000_sensor_1_temperature') | float(0) %}
+          {% set humidity = states('sensor.ws3000_sensor_1_humidity') | float(0) %}
+          {% set temp_c = (temp_f - 32) * 5/9 %}
+          {% set a = 17.27 %}
+          {% set b = 237.7 %}
+          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+          {% set dew_point_c = (b * alpha) / (a - alpha) %}
+          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+        attributes:
+          color: >
+            {% set temp_f = states('sensor.ws3000_sensor_1_temperature') | float(0) %}
+            {% set humidity = states('sensor.ws3000_sensor_1_humidity') | float(0) %}
+            {% set temp_c = (temp_f - 32) * 5/9 %}
+            {% set a = 17.27 %}
+            {% set b = 237.7 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+            {% if dew_point < 30 %}#0D47A1
+            {% elif dew_point < 40 %}#1976D2
+            {% elif dew_point < 50 %}#42A5F5
+            {% elif dew_point < 60 %}#8BC34A
+            {% elif dew_point < 65 %}#FFEB3B
+            {% elif dew_point < 70 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 2 Dew Point"
+        unique_id: ws3000_sensor_2_dew_point
+        unit_of_measurement: "°F"
+        icon: mdi:water-thermometer
+        state: >
+          {% set temp_f = states('sensor.ws3000_sensor_2_temperature') | float(0) %}
+          {% set humidity = states('sensor.ws3000_sensor_2_humidity') | float(0) %}
+          {% set temp_c = (temp_f - 32) * 5/9 %}
+          {% set a = 17.27 %}
+          {% set b = 237.7 %}
+          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+          {% set dew_point_c = (b * alpha) / (a - alpha) %}
+          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+        attributes:
+          color: >
+            {% set temp_f = states('sensor.ws3000_sensor_2_temperature') | float(0) %}
+            {% set humidity = states('sensor.ws3000_sensor_2_humidity') | float(0) %}
+            {% set temp_c = (temp_f - 32) * 5/9 %}
+            {% set a = 17.27 %}
+            {% set b = 237.7 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+            {% if dew_point < 30 %}#0D47A1
+            {% elif dew_point < 40 %}#1976D2
+            {% elif dew_point < 50 %}#42A5F5
+            {% elif dew_point < 60 %}#8BC34A
+            {% elif dew_point < 65 %}#FFEB3B
+            {% elif dew_point < 70 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 3 Dew Point"
+        unique_id: ws3000_sensor_3_dew_point
+        unit_of_measurement: "°F"
+        icon: mdi:water-thermometer
+        state: >
+          {% set temp_f = states('sensor.ws3000_sensor_3_temperature') | float(0) %}
+          {% set humidity = states('sensor.ws3000_sensor_3_humidity') | float(0) %}
+          {% set temp_c = (temp_f - 32) * 5/9 %}
+          {% set a = 17.27 %}
+          {% set b = 237.7 %}
+          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+          {% set dew_point_c = (b * alpha) / (a - alpha) %}
+          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+        attributes:
+          color: >
+            {% set temp_f = states('sensor.ws3000_sensor_3_temperature') | float(0) %}
+            {% set humidity = states('sensor.ws3000_sensor_3_humidity') | float(0) %}
+            {% set temp_c = (temp_f - 32) * 5/9 %}
+            {% set a = 17.27 %}
+            {% set b = 237.7 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+            {% if dew_point < 30 %}#0D47A1
+            {% elif dew_point < 40 %}#1976D2
+            {% elif dew_point < 50 %}#42A5F5
+            {% elif dew_point < 60 %}#8BC34A
+            {% elif dew_point < 65 %}#FFEB3B
+            {% elif dew_point < 70 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 4 Dew Point"
+        unique_id: ws3000_sensor_4_dew_point
+        unit_of_measurement: "°F"
+        icon: mdi:water-thermometer
+        state: >
+          {% set temp_f = states('sensor.ws3000_sensor_4_temperature') | float(0) %}
+          {% set humidity = states('sensor.ws3000_sensor_4_humidity') | float(0) %}
+          {% set temp_c = (temp_f - 32) * 5/9 %}
+          {% set a = 17.27 %}
+          {% set b = 237.7 %}
+          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+          {% set dew_point_c = (b * alpha) / (a - alpha) %}
+          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+        attributes:
+          color: >
+            {% set temp_f = states('sensor.ws3000_sensor_4_temperature') | float(0) %}
+            {% set humidity = states('sensor.ws3000_sensor_4_humidity') | float(0) %}
+            {% set temp_c = (temp_f - 32) * 5/9 %}
+            {% set a = 17.27 %}
+            {% set b = 237.7 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+            {% if dew_point < 30 %}#0D47A1
+            {% elif dew_point < 40 %}#1976D2
+            {% elif dew_point < 50 %}#42A5F5
+            {% elif dew_point < 60 %}#8BC34A
+            {% elif dew_point < 65 %}#FFEB3B
+            {% elif dew_point < 70 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 5 Dew Point"
+        unique_id: ws3000_sensor_5_dew_point
+        unit_of_measurement: "°F"
+        icon: mdi:water-thermometer
+        state: >
+          {% set temp_f = states('sensor.ws3000_sensor_5_temperature') | float(0) %}
+          {% set humidity = states('sensor.ws3000_sensor_5_humidity') | float(0) %}
+          {% set temp_c = (temp_f - 32) * 5/9 %}
+          {% set a = 17.27 %}
+          {% set b = 237.7 %}
+          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+          {% set dew_point_c = (b * alpha) / (a - alpha) %}
+          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+        attributes:
+          color: >
+            {% set temp_f = states('sensor.ws3000_sensor_5_temperature') | float(0) %}
+            {% set humidity = states('sensor.ws3000_sensor_5_humidity') | float(0) %}
+            {% set temp_c = (temp_f - 32) * 5/9 %}
+            {% set a = 17.27 %}
+            {% set b = 237.7 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+            {% if dew_point < 30 %}#0D47A1
+            {% elif dew_point < 40 %}#1976D2
+            {% elif dew_point < 50 %}#42A5F5
+            {% elif dew_point < 60 %}#8BC34A
+            {% elif dew_point < 65 %}#FFEB3B
+            {% elif dew_point < 70 %}#FF9800
+            {% else %}#D32F2F{% endif %}
+
+      - name: "WS3000 Sensor 6 Dew Point"
+        unique_id: ws3000_sensor_6_dew_point
+        unit_of_measurement: "°F"
+        icon: mdi:water-thermometer
+        state: >
+          {% set temp_f = states('sensor.ws3000_sensor_6_temperature') | float(0) %}
+          {% set humidity = states('sensor.ws3000_sensor_6_humidity') | float(0) %}
+          {% set temp_c = (temp_f - 32) * 5/9 %}
+          {% set a = 17.27 %}
+          {% set b = 237.7 %}
+          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+          {% set dew_point_c = (b * alpha) / (a - alpha) %}
+          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+        attributes:
+          color: >
+            {% set temp_f = states('sensor.ws3000_sensor_6_temperature') | float(0) %}
+            {% set humidity = states('sensor.ws3000_sensor_6_humidity') | float(0) %}
+            {% set temp_c = (temp_f - 32) * 5/9 %}
+            {% set a = 17.27 %}
+            {% set b = 237.7 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+            {% if dew_point < 30 %}#0D47A1
+            {% elif dew_point < 40 %}#1976D2
+            {% elif dew_point < 50 %}#42A5F5
+            {% elif dew_point < 60 %}#8BC34A
+            {% elif dew_point < 65 %}#FFEB3B
+            {% elif dew_point < 70 %}#FF9800
+            {% else %}#D32F2F{% endif %}
