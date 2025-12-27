@@ -24,7 +24,7 @@ mqtt:
     # WS3000 Sensor 1
     - name: "WS3000 Sensor 1 Temperature"
       state_topic: "ws3000/sensor_1"
-      value_template: "{{ value_json.temperature }}"
+      value_template: "{{ (value_json.temperature | float * 9/5 + 32) | round(1) }}"
       unit_of_measurement: "°F"
       device_class: temperature
 
@@ -37,7 +37,7 @@ mqtt:
     # WS3000 Sensor 2
     - name: "WS3000 Sensor 2 Temperature"
       state_topic: "ws3000/sensor_2"
-      value_template: "{{ value_json.temperature }}"
+      value_template: "{{ (value_json.temperature | float * 9/5 + 32) | round(1) }}"
       unit_of_measurement: "°F"
       device_class: temperature
 
@@ -50,7 +50,7 @@ mqtt:
     # WS3000 Sensor 3
     - name: "WS3000 Sensor 3 Temperature"
       state_topic: "ws3000/sensor_3"
-      value_template: "{{ value_json.temperature }}"
+      value_template: "{{ (value_json.temperature | float * 9/5 + 32) | round(1) }}"
       unit_of_measurement: "°F"
       device_class: temperature
 
@@ -63,7 +63,7 @@ mqtt:
     # WS3000 Sensor 4
     - name: "WS3000 Sensor 4 Temperature"
       state_topic: "ws3000/sensor_4"
-      value_template: "{{ value_json.temperature }}"
+      value_template: "{{ (value_json.temperature | float * 9/5 + 32) | round(1) }}"
       unit_of_measurement: "°F"
       device_class: temperature
 
@@ -76,7 +76,7 @@ mqtt:
     # WS3000 Sensor 5
     - name: "WS3000 Sensor 5 Temperature"
       state_topic: "ws3000/sensor_5"
-      value_template: "{{ value_json.temperature }}"
+      value_template: "{{ (value_json.temperature | float * 9/5 + 32) | round(1) }}"
       unit_of_measurement: "°F"
       device_class: temperature
 
@@ -89,7 +89,7 @@ mqtt:
     # WS3000 Sensor 6
     - name: "WS3000 Sensor 6 Temperature"
       state_topic: "ws3000/sensor_6"
-      value_template: "{{ value_json.temperature }}"
+      value_template: "{{ (value_json.temperature | float * 9/5 + 32) | round(1) }}"
       unit_of_measurement: "°F"
       device_class: temperature
 
@@ -291,11 +291,8 @@ template:
       # ======================================
       # DEW POINT SENSORS
       # Calculated using Magnus formula for dew point
-      # Td = (b × α(T,RH)) / (a - α(T,RH))
-      # where α(T,RH) = ln(RH/100) + aT/(b+T)
-      # Constants: a = 17.27, b = 237.7°C
-      # Temperature converted from °F to °C for calculation
-      # Result converted back to °F
+      # Gets temperature in F, converts to C for calculation,
+      # then converts result back to F
       # ======================================
       - name: "WS3000 Sensor 1 Dew Point"
         unique_id: ws3000_sensor_1_dew_point
@@ -307,9 +304,13 @@ template:
           {% set temp_c = (temp_f - 32) * 5/9 %}
           {% set a = 17.27 %}
           {% set b = 237.7 %}
-          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-          {% set dew_point_c = (b * alpha) / (a - alpha) %}
-          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% if humidity > 0 and temp_f != 0 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% else %}
+            unavailable
+          {% endif %}
         attributes:
           color: >
             {% set temp_f = states('sensor.ws3000_sensor_1_temperature') | float(0) %}
@@ -317,16 +318,20 @@ template:
             {% set temp_c = (temp_f - 32) * 5/9 %}
             {% set a = 17.27 %}
             {% set b = 237.7 %}
-            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-            {% set dew_point_c = (b * alpha) / (a - alpha) %}
-            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
-            {% if dew_point < 30 %}#0D47A1
-            {% elif dew_point < 40 %}#1976D2
-            {% elif dew_point < 50 %}#42A5F5
-            {% elif dew_point < 60 %}#8BC34A
-            {% elif dew_point < 65 %}#FFEB3B
-            {% elif dew_point < 70 %}#FF9800
-            {% else %}#D32F2F{% endif %}
+            {% if humidity > 0 and temp_f != 0 %}
+              {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+              {% set dew_point_c = (b * alpha) / (a - alpha) %}
+              {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+              {% if dew_point < 30 %}#0D47A1
+              {% elif dew_point < 40 %}#1976D2
+              {% elif dew_point < 50 %}#42A5F5
+              {% elif dew_point < 60 %}#8BC34A
+              {% elif dew_point < 65 %}#FFEB3B
+              {% elif dew_point < 70 %}#FF9800
+              {% else %}#D32F2F{% endif %}
+            {% else %}
+              #808080
+            {% endif %}
 
       - name: "WS3000 Sensor 2 Dew Point"
         unique_id: ws3000_sensor_2_dew_point
@@ -338,9 +343,13 @@ template:
           {% set temp_c = (temp_f - 32) * 5/9 %}
           {% set a = 17.27 %}
           {% set b = 237.7 %}
-          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-          {% set dew_point_c = (b * alpha) / (a - alpha) %}
-          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% if humidity > 0 and temp_f != 0 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% else %}
+            unavailable
+          {% endif %}
         attributes:
           color: >
             {% set temp_f = states('sensor.ws3000_sensor_2_temperature') | float(0) %}
@@ -348,16 +357,20 @@ template:
             {% set temp_c = (temp_f - 32) * 5/9 %}
             {% set a = 17.27 %}
             {% set b = 237.7 %}
-            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-            {% set dew_point_c = (b * alpha) / (a - alpha) %}
-            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
-            {% if dew_point < 30 %}#0D47A1
-            {% elif dew_point < 40 %}#1976D2
-            {% elif dew_point < 50 %}#42A5F5
-            {% elif dew_point < 60 %}#8BC34A
-            {% elif dew_point < 65 %}#FFEB3B
-            {% elif dew_point < 70 %}#FF9800
-            {% else %}#D32F2F{% endif %}
+            {% if humidity > 0 and temp_f != 0 %}
+              {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+              {% set dew_point_c = (b * alpha) / (a - alpha) %}
+              {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+              {% if dew_point < 30 %}#0D47A1
+              {% elif dew_point < 40 %}#1976D2
+              {% elif dew_point < 50 %}#42A5F5
+              {% elif dew_point < 60 %}#8BC34A
+              {% elif dew_point < 65 %}#FFEB3B
+              {% elif dew_point < 70 %}#FF9800
+              {% else %}#D32F2F{% endif %}
+            {% else %}
+              #808080
+            {% endif %}
 
       - name: "WS3000 Sensor 3 Dew Point"
         unique_id: ws3000_sensor_3_dew_point
@@ -369,9 +382,13 @@ template:
           {% set temp_c = (temp_f - 32) * 5/9 %}
           {% set a = 17.27 %}
           {% set b = 237.7 %}
-          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-          {% set dew_point_c = (b * alpha) / (a - alpha) %}
-          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% if humidity > 0 and temp_f != 0 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% else %}
+            unavailable
+          {% endif %}
         attributes:
           color: >
             {% set temp_f = states('sensor.ws3000_sensor_3_temperature') | float(0) %}
@@ -379,16 +396,20 @@ template:
             {% set temp_c = (temp_f - 32) * 5/9 %}
             {% set a = 17.27 %}
             {% set b = 237.7 %}
-            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-            {% set dew_point_c = (b * alpha) / (a - alpha) %}
-            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
-            {% if dew_point < 30 %}#0D47A1
-            {% elif dew_point < 40 %}#1976D2
-            {% elif dew_point < 50 %}#42A5F5
-            {% elif dew_point < 60 %}#8BC34A
-            {% elif dew_point < 65 %}#FFEB3B
-            {% elif dew_point < 70 %}#FF9800
-            {% else %}#D32F2F{% endif %}
+            {% if humidity > 0 and temp_f != 0 %}
+              {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+              {% set dew_point_c = (b * alpha) / (a - alpha) %}
+              {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+              {% if dew_point < 30 %}#0D47A1
+              {% elif dew_point < 40 %}#1976D2
+              {% elif dew_point < 50 %}#42A5F5
+              {% elif dew_point < 60 %}#8BC34A
+              {% elif dew_point < 65 %}#FFEB3B
+              {% elif dew_point < 70 %}#FF9800
+              {% else %}#D32F2F{% endif %}
+            {% else %}
+              #808080
+            {% endif %}
 
       - name: "WS3000 Sensor 4 Dew Point"
         unique_id: ws3000_sensor_4_dew_point
@@ -400,9 +421,13 @@ template:
           {% set temp_c = (temp_f - 32) * 5/9 %}
           {% set a = 17.27 %}
           {% set b = 237.7 %}
-          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-          {% set dew_point_c = (b * alpha) / (a - alpha) %}
-          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% if humidity > 0 and temp_f != 0 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% else %}
+            unavailable
+          {% endif %}
         attributes:
           color: >
             {% set temp_f = states('sensor.ws3000_sensor_4_temperature') | float(0) %}
@@ -410,16 +435,20 @@ template:
             {% set temp_c = (temp_f - 32) * 5/9 %}
             {% set a = 17.27 %}
             {% set b = 237.7 %}
-            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-            {% set dew_point_c = (b * alpha) / (a - alpha) %}
-            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
-            {% if dew_point < 30 %}#0D47A1
-            {% elif dew_point < 40 %}#1976D2
-            {% elif dew_point < 50 %}#42A5F5
-            {% elif dew_point < 60 %}#8BC34A
-            {% elif dew_point < 65 %}#FFEB3B
-            {% elif dew_point < 70 %}#FF9800
-            {% else %}#D32F2F{% endif %}
+            {% if humidity > 0 and temp_f != 0 %}
+              {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+              {% set dew_point_c = (b * alpha) / (a - alpha) %}
+              {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+              {% if dew_point < 30 %}#0D47A1
+              {% elif dew_point < 40 %}#1976D2
+              {% elif dew_point < 50 %}#42A5F5
+              {% elif dew_point < 60 %}#8BC34A
+              {% elif dew_point < 65 %}#FFEB3B
+              {% elif dew_point < 70 %}#FF9800
+              {% else %}#D32F2F{% endif %}
+            {% else %}
+              #808080
+            {% endif %}
 
       - name: "WS3000 Sensor 5 Dew Point"
         unique_id: ws3000_sensor_5_dew_point
@@ -431,9 +460,13 @@ template:
           {% set temp_c = (temp_f - 32) * 5/9 %}
           {% set a = 17.27 %}
           {% set b = 237.7 %}
-          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-          {% set dew_point_c = (b * alpha) / (a - alpha) %}
-          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% if humidity > 0 and temp_f != 0 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% else %}
+            unavailable
+          {% endif %}
         attributes:
           color: >
             {% set temp_f = states('sensor.ws3000_sensor_5_temperature') | float(0) %}
@@ -441,16 +474,20 @@ template:
             {% set temp_c = (temp_f - 32) * 5/9 %}
             {% set a = 17.27 %}
             {% set b = 237.7 %}
-            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-            {% set dew_point_c = (b * alpha) / (a - alpha) %}
-            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
-            {% if dew_point < 30 %}#0D47A1
-            {% elif dew_point < 40 %}#1976D2
-            {% elif dew_point < 50 %}#42A5F5
-            {% elif dew_point < 60 %}#8BC34A
-            {% elif dew_point < 65 %}#FFEB3B
-            {% elif dew_point < 70 %}#FF9800
-            {% else %}#D32F2F{% endif %}
+            {% if humidity > 0 and temp_f != 0 %}
+              {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+              {% set dew_point_c = (b * alpha) / (a - alpha) %}
+              {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+              {% if dew_point < 30 %}#0D47A1
+              {% elif dew_point < 40 %}#1976D2
+              {% elif dew_point < 50 %}#42A5F5
+              {% elif dew_point < 60 %}#8BC34A
+              {% elif dew_point < 65 %}#FFEB3B
+              {% elif dew_point < 70 %}#FF9800
+              {% else %}#D32F2F{% endif %}
+            {% else %}
+              #808080
+            {% endif %}
 
       - name: "WS3000 Sensor 6 Dew Point"
         unique_id: ws3000_sensor_6_dew_point
@@ -462,9 +499,13 @@ template:
           {% set temp_c = (temp_f - 32) * 5/9 %}
           {% set a = 17.27 %}
           {% set b = 237.7 %}
-          {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-          {% set dew_point_c = (b * alpha) / (a - alpha) %}
-          {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% if humidity > 0 and temp_f != 0 %}
+            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+            {% set dew_point_c = (b * alpha) / (a - alpha) %}
+            {{ ((dew_point_c * 9/5) + 32) | round(1) }}
+          {% else %}
+            unavailable
+          {% endif %}
         attributes:
           color: >
             {% set temp_f = states('sensor.ws3000_sensor_6_temperature') | float(0) %}
@@ -472,13 +513,17 @@ template:
             {% set temp_c = (temp_f - 32) * 5/9 %}
             {% set a = 17.27 %}
             {% set b = 237.7 %}
-            {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
-            {% set dew_point_c = (b * alpha) / (a - alpha) %}
-            {% set dew_point = ((dew_point_c * 9/5) + 32) %}
-            {% if dew_point < 30 %}#0D47A1
-            {% elif dew_point < 40 %}#1976D2
-            {% elif dew_point < 50 %}#42A5F5
-            {% elif dew_point < 60 %}#8BC34A
-            {% elif dew_point < 65 %}#FFEB3B
-            {% elif dew_point < 70 %}#FF9800
-            {% else %}#D32F2F{% endif %}
+            {% if humidity > 0 and temp_f != 0 %}
+              {% set alpha = (a * temp_c) / (b + temp_c) + log(humidity/100) %}
+              {% set dew_point_c = (b * alpha) / (a - alpha) %}
+              {% set dew_point = ((dew_point_c * 9/5) + 32) %}
+              {% if dew_point < 30 %}#0D47A1
+              {% elif dew_point < 40 %}#1976D2
+              {% elif dew_point < 50 %}#42A5F5
+              {% elif dew_point < 60 %}#8BC34A
+              {% elif dew_point < 65 %}#FFEB3B
+              {% elif dew_point < 70 %}#FF9800
+              {% else %}#D32F2F{% endif %}
+            {% else %}
+              #808080
+            {% endif %}
