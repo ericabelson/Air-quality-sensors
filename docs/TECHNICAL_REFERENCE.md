@@ -2,7 +2,7 @@
 
 This document provides verified technical specifications, datasheets, and reference materials for all sensors and components used in the UTSensing air quality monitoring system.
 
-**Last Updated:** 2025-12-22
+**Last Updated:** 2025-12-27
 
 ---
 
@@ -14,6 +14,8 @@ This document provides verified technical specifications, datasheets, and refere
 4. [Technical Glossary](#technical-glossary)
 5. [Calibration Procedures](#calibration-procedures)
 6. [Wiring Diagrams](#wiring-diagrams)
+7. [Real-Time Clock (RTC) Battery Backup](#real-time-clock-rtc-battery-backup)
+8. [Health and Safety References](#health-and-safety-references)
 
 ---
 
@@ -789,15 +791,19 @@ Note: MQ136 may have 10kΩ load resistor onboard.
 Check module schematic.
 ```
 
-### Raspberry Pi to Arduino Connection
+### Raspberry Pi/Odroid to Arduino Connection
+
+**Normal Operation Setup:**
+
+The primary connection for normal operation uses a standard USB cable:
 
 ```
-Raspberry Pi 4        Arduino Nano
-┌──────────┐         ┌──────────┐
-│          │         │          │
-│ USB Port ├─────────┤ USB Mini │ (5V power + serial data)
-│          │  Cable  │          │
-└──────────┘         └──────────┘
+Raspberry Pi 4 / Odroid C1+     Arduino Nano
+┌──────────┐                   ┌──────────┐
+│          │                   │          │
+│ USB Port ├───────────────────┤ USB Mini │ (5V power + serial data)
+│          │  USB Cable        │          │
+└──────────┘                   └──────────┘
 
 Serial Settings:
 - Baud Rate: 9600
@@ -806,6 +812,29 @@ Serial Settings:
 - Stop Bits: 1
 - Device: /dev/ttyUSB0 (usually)
 ```
+
+All five sensor cables connect directly to the Arduino breakout board, which then communicates with the Raspberry Pi/Odroid via this USB connection.
+
+---
+
+### UART-to-USB Debug Adapter (Optional)
+
+**What it is:** A separate USB-to-serial adapter for direct Arduino debugging and development.
+
+**Purpose:** The UART-to-USB adapter is **NOT** part of the normal operational setup. It's a development/troubleshooting tool for:
+
+1. **Direct Arduino monitoring** - Connect the adapter to a computer to view serial output from the Arduino in real-time without going through the Raspberry Pi/Odroid
+2. **Independent Arduino testing** - Test the Arduino and sensors separately from the main system
+3. **Firmware programming** - Alternative method to upload Arduino code directly via USB (in addition to programming through the Odroid)
+4. **Debugging** - If the Odroid USB connection fails, you can still access the Arduino directly via this adapter
+
+**Typical setup:**
+- Arduino TX pin → UART adapter RX
+- Arduino RX pin → UART adapter TX
+- Arduino GND → UART adapter GND
+- Adapter connects to computer via USB
+
+This adapter came as part of the original MINTS directions and sits dormant in normal operation, available for troubleshooting if needed.
 
 ---
 
@@ -837,6 +866,64 @@ Expected output:
 60:          -- 61 -- -- -- -- -- -- -- -- -- -- -- -- -- --
 70:          -- -- -- 73 -- -- 76 --
 ```
+
+---
+
+## Real-Time Clock (RTC) Battery Backup
+
+### CR1220 Battery Pack with JST Connector
+
+The system includes an **RTC (Real-Time Clock) battery backup** to maintain accurate system time even when the Raspberry Pi/Odroid is powered off.
+
+**Component Details:**
+
+| Specification | Details |
+|---------------|---------|
+| **Battery Type** | CR1220 Lithium Coin Cell |
+| **Nominal Voltage** | 3.0V |
+| **Configuration** | Pre-assembled battery pack with JST connector |
+| **Physical Description** | Coin battery wrapped in black insulation tape with two color-coded wires (red = positive, black = negative) ending in a small plastic JST connector |
+| **Connector Type** | JST XH (or similar 2-pin connector) plugs directly into RTC module |
+| **Purpose** | Maintains accurate date/time through power cycles for CSV logging and MQTT timestamps |
+
+**Why it matters:**
+- Without RTC backup power, the system loses accurate time when powered off
+- This breaks timestamp accuracy in CSV files (organized by date)
+- MQTT data loses accurate timestamps
+- Sensor readings become untrustable for time-series analysis
+
+**Testing the Battery:**
+
+Use a multimeter to check voltage:
+
+1. Set multimeter to **DC Voltage (V with straight line)**
+2. Carefully touch **red probe to red wire** (positive)
+3. Touch **black probe to black wire** (negative)
+4. Read the voltage:
+   - **2.5V or higher** = Battery is good
+   - **2.0-2.5V** = Getting weak, replace soon
+   - **Below 2.0V** = Dead, replace immediately
+
+**Replacing the Battery:**
+
+1. **What to order:**
+   - Search for: **"CR1220 battery pack JST connector"** or **"RTC battery module CR1220"**
+   - Cost: Usually $2-5 per unit
+   - Sources: Amazon, Adafruit, electronics suppliers
+   - Buy 2-3 extras to keep in your parts kit
+
+2. **Installation:**
+   - Gently unplug the connector from the RTC module
+   - Plug in the new battery pack
+   - No soldering required
+
+3. **Storage:**
+   - Lithium coin batteries remain functional for ~10 years when stored dry
+   - Keep spare batteries in a dry place away from moisture
+
+**Expected Battery Life:**
+- Typical CR1220 coin cell: 5-10 years (when not actively discharging)
+- Check annually if the system is dormant for extended periods
 
 ---
 
