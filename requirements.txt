@@ -12,10 +12,10 @@ PyYAML>=6.0             # YAML configuration files
 paho-mqtt>=1.6.0        # MQTT client for Home Assistant integration
 
 # HTTP requests
-requests>=2.28.0        # HTTP library for IP detection and API calls
+requests>=2.27.0        # HTTP library for IP detection and API calls (compatible with Python 3.6)
 
 # Data processing
-numpy>=1.21.0           # Numerical computations (optional, for advanced analytics)
+numpy>=1.16.0           # Numerical computations (optional, for advanced analytics) - Python 3.6 compatible
 
 # Image processing (for sky camera, optional)
 # Uncomment if using sky camera feature:
