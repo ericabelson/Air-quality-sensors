@@ -1,16 +1,19 @@
-# UTSensing Air Quality Dashboard
+# UTSensing Air Quality Dashboard with Comprehensive Gauge Visualization
 #
 # To use this dashboard:
-# 1. Go to Settings > Dashboards > Add Dashboard
-# 2. Create a new dashboard named "Air Quality"
+# 1. Go to Settings > Dashboards > Create Dashboard (or Edit existing)
+# 2. Name: "Air Quality Monitor"
 # 3. Click the three dots > Edit Dashboard > Raw Configuration Editor
 # 4. Paste this entire file content
 # 5. Save
+#
+# This dashboard displays all sensors as gauges with color-coded severity levels.
+# See GAUGES_REFERENCE.md for threshold documentation.
 
 title: Air Quality Monitor
 views:
   # =========================================================================
-  # MAIN VIEW - Overview Dashboard
+  # MAIN VIEW - Overview Dashboard with All Gauges
   # =========================================================================
   - title: Overview
     path: overview
@@ -20,166 +23,329 @@ views:
       # Header with timestamp
       - type: markdown
         content: |
-          # Air Quality Monitor
+          # 🌍 Air Quality Monitor
           **Last Update:** {{ now().strftime('%B %d, %Y at %H:%M:%S') }}
+          **Status:** {% if states('sensor.air_quality_aqi') | int(0) <= 50 %}✅ Excellent{% elif states('sensor.air_quality_aqi') | int(0) <= 100 %}✅ Good{% elif states('sensor.air_quality_aqi') | int(0) <= 150 %}⚠️ Moderate{% elif states('sensor.air_quality_aqi') | int(0) <= 200 %}⚠️ Unhealthy{% else %}🚨 Hazardous{% endif %}
         card_mod:
           style: |
             ha-card {
               background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
               color: white;
+              padding: 20px;
+              border-radius: 8px;
             }
 
-      # Overall AQI Large Display
-      - type: vertical-stack
-        cards:
-          - type: custom:mushroom-template-card
-            primary: "Air Quality Index"
-            secondary: "{{ states('sensor.air_quality_aqi') }} - {{ state_attr('sensor.air_quality_aqi', 'category') }}"
-            icon: mdi:air-filter
-            icon_color: >
-              {% set aqi = states('sensor.air_quality_aqi') | int(0) %}
-              {% if aqi <= 50 %}green
-              {% elif aqi <= 100 %}yellow
-              {% elif aqi <= 150 %}orange
-              {% elif aqi <= 200 %}red
-              {% elif aqi <= 300 %}purple
-              {% else %}#7E0023{% endif %}
-            card_mod:
-              style: |
-                ha-card {
-                  font-size: 1.2em;
-                }
+      # =========================================================================
+      # CRITICAL SENSORS - Large Gauge Display
+      # =========================================================================
+      - type: heading
+        heading: Critical Air Quality Metrics
 
-      # Main Sensor Gauges
+      # CO2 Gauge
       - type: horizontal-stack
         cards:
           - type: gauge
             entity: sensor.air_quality_co2
-            name: CO₂
+            name: CO₂ Level
             min: 400
-            max: 2500
+            max: 3000
             severity:
               green: 400
-              yellow: 800
-              red: 1000
+              yellow: 1000
+              orange: 1500
+              red: 2500
             needle: true
+            unit: ppm
 
+          # PM2.5 Gauge (using AQI)
           - type: gauge
             entity: sensor.air_quality_pm2_5
             name: PM2.5
             min: 0
-            max: 150
+            max: 300
             severity:
               green: 0
-              yellow: 12
-              red: 35
+              yellow: 35
+              orange: 100
+              red: 150
             needle: true
+            unit: μg/m³
 
+          # TVOC Gauge
           - type: gauge
             entity: sensor.air_quality_tvoc
             name: TVOC
             min: 0
-            max: 2200
+            max: 2500
             severity:
               green: 0
               yellow: 220
-              red: 660
+              orange: 660
+              red: 2200
             needle: true
+            unit: ppb
 
-      # Status Cards Row
+      # =========================================================================
+      # AIR QUALITY INDEX & STATUS
+      # =========================================================================
+      - type: heading
+        heading: Air Quality Status
+
       - type: horizontal-stack
         cards:
+          # Overall AQI Display
+          - type: gauge
+            entity: sensor.air_quality_aqi
+            name: Overall AQI
+            min: 0
+            max: 500
+            severity:
+              green: 0
+              yellow: 50
+              orange: 100
+              red: 150
+            needle: true
+
+          # CO2 Status
           - type: entity
             entity: sensor.air_quality_co2_status
-            name: CO₂ Status
-            icon: mdi:molecule-co2
+            name: CO₂ Assessment
 
+          # H2S Status
           - type: entity
-            entity: sensor.air_quality_aqi
-            name: AQI
-            icon: mdi:gauge
+            entity: sensor.air_quality_h2s
+            name: H₂S Level
 
-      # Environmental Conditions
-      - type: glance
-        title: Environmental Conditions
-        show_name: true
-        show_icon: true
-        show_state: true
-        entities:
-          - entity: sensor.air_quality_temperature
-            name: Temp
-          - entity: sensor.air_quality_humidity
-            name: Humidity
-          - entity: sensor.air_quality_pressure
-            name: Pressure
-          - entity: sensor.air_quality_ozone
+      # =========================================================================
+      # GAS POLLUTANTS - Hazardous Gases
+      # =========================================================================
+      - type: heading
+        heading: Hazardous Gases & Pollutants
+
+      - type: horizontal-stack
+        cards:
+          # Ozone Gauge
+          - type: gauge
+            entity: sensor.air_quality_ozone
             name: Ozone
+            min: 0
+            max: 250
+            severity:
+              green: 0
+              yellow: 50
+              orange: 70
+              red: 85
+            needle: true
+            unit: ppb
 
-      # Gas Levels
-      - type: glance
-        title: Gas Levels
-        show_name: true
-        show_icon: true
-        show_state: true
-        entities:
-          - entity: sensor.air_quality_co
-            name: CO
-          - entity: sensor.air_quality_no2
+          # Carbon Monoxide Gauge
+          - type: gauge
+            entity: sensor.air_quality_co
+            name: Carbon Monoxide
+            min: 0
+            max: 500
+            severity:
+              green: 0
+              yellow: 9
+              orange: 35
+              red: 100
+            needle: true
+            unit: ppm
+
+          # Nitrogen Dioxide Gauge
+          - type: gauge
+            entity: sensor.air_quality_no2
             name: NO₂
-          - entity: sensor.air_quality_ethanol
-            name: Ethanol
-          - entity: sensor.air_quality_h2s
-            name: H₂S
+            min: 0
+            max: 1.0
+            severity:
+              green: 0
+              yellow: 0.053
+              orange: 0.1
+              red: 0.36
+            needle: true
+            unit: ppm
 
-      # Particulate Matter Detail
-      - type: entities
-        title: Particulate Matter
-        entities:
-          - entity: sensor.air_quality_pm1
+      # =========================================================================
+      # PARTICULATE MATTER - All PM Sizes
+      # =========================================================================
+      - type: heading
+        heading: Particulate Matter Analysis
+
+      - type: horizontal-stack
+        cards:
+          # PM1.0 Gauge
+          - type: gauge
+            entity: sensor.air_quality_pm1
             name: PM1.0
-          - entity: sensor.air_quality_pm2_5
-            name: PM2.5
-          - entity: sensor.air_quality_pm10
+            min: 0
+            max: 100
+            severity:
+              green: 0
+              yellow: 10
+              orange: 30
+              red: 50
+            needle: true
+            unit: μg/m³
+
+          # PM10 Gauge
+          - type: gauge
+            entity: sensor.air_quality_pm10
             name: PM10
+            min: 0
+            max: 500
+            severity:
+              green: 0
+              yellow: 54
+              orange: 154
+              red: 254
+            needle: true
+            unit: μg/m³
+
+      # Particle Count Details
+      - type: entities
+        title: Particle Counts
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_particles_0_3um
+            name: 0.3 μm Particles
+          - entity: sensor.air_quality_particles_0_5um
+            name: 0.5 μm Particles
+          - entity: sensor.air_quality_particles_1um
+            name: 1 μm Particles
+          - entity: sensor.air_quality_particles_2_5um
+            name: 2.5 μm Particles
+
+      # =========================================================================
+      # ENVIRONMENTAL CONDITIONS
+      # =========================================================================
+      - type: heading
+        heading: Temperature, Humidity & Pressure
+
+      - type: horizontal-stack
+        cards:
+          # Temperature Gauge
+          - type: gauge
+            entity: sensor.air_quality_temperature
+            name: Temperature
+            min: 5
+            max: 35
+            severity:
+              green: 15
+              yellow: 28
+              orange: 35
+            needle: true
+            unit: °C
+
+          # Humidity Gauge
+          - type: gauge
+            entity: sensor.air_quality_humidity
+            name: Humidity
+            min: 0
+            max: 100
+            severity:
+              green: 20
+              yellow: 80
+              orange: 90
+            needle: true
+            unit: '%'
+
+          # Pressure Gauge
+          - type: gauge
+            entity: sensor.air_quality_pressure
+            name: Pressure
+            min: 800
+            max: 1100
+            severity:
+              green: 950
+              yellow: 1050
+              orange: 1100
+            needle: true
+            unit: hPa
+
+      # Gas Resistance Display
+      - type: entities
+        title: Environmental Quality
+        show_header_toggle: false
+        entities:
+          - entity: sensor.air_quality_temperature_bme680
+            name: Temperature (BME680)
+          - entity: sensor.air_quality_humidity_bme680
+            name: Humidity (BME680)
+          - entity: sensor.air_quality_gas_resistance
+            name: Gas Resistance
+          - entity: sensor.air_quality_eco2
+            name: Equivalent CO₂
+
+      # =========================================================================
+      # VOC ANALYSIS
+      # =========================================================================
+      - type: heading
+        heading: Volatile Organic Compounds
+
+      - type: horizontal-stack
+        cards:
+          # Raw VOC from MGSV2
+          - type: entity
+            entity: sensor.air_quality_voc_mgsv2
+            name: VOC Level
+
+          # Ethanol levels
+          - type: entity
+            entity: sensor.air_quality_ethanol
+            name: Ethanol Vapor
 
   # =========================================================================
-  # HISTORY VIEW - 3 Day Trends
+  # TRENDS VIEW - 24/48/72 Hour History
   # =========================================================================
-  - title: History
-    path: history
+  - title: Trends
+    path: trends
     icon: mdi:chart-line
     badges: []
     cards:
       - type: markdown
         content: |
-          # 3-Day History
-          Showing trends for the past 72 hours
+          # 📈 Air Quality Trends
+          Historical data showing 72-hour patterns
+        card_mod:
+          style: |
+            ha-card {
+              background: linear-gradient(135deg, #0d3b66 0%, #1a5490 100%);
+              color: white;
+              padding: 15px;
+              border-radius: 8px;
+            }
 
-      # CO2 History
+      # CO2 Trend
       - type: history-graph
-        title: CO₂ Levels
+        title: CO₂ Levels (72 Hours)
         hours_to_show: 72
         refresh_interval: 60
         entities:
           - entity: sensor.air_quality_co2
             name: CO₂ (ppm)
 
-      # Particulate Matter History
+      # PM2.5 Trend
       - type: history-graph
-        title: Particulate Matter
+        title: Particulate Matter PM2.5 (72 Hours)
         hours_to_show: 72
         refresh_interval: 60
         entities:
-          - entity: sensor.air_quality_pm1
-            name: PM1
           - entity: sensor.air_quality_pm2_5
-            name: PM2.5
-          - entity: sensor.air_quality_pm10
-            name: PM10
+            name: PM2.5 (μg/m³)
 
-      # Temperature and Humidity History
+      # PM10 Trend
       - type: history-graph
-        title: Temperature & Humidity
+        title: Particulate Matter PM10 (72 Hours)
+        hours_to_show: 72
+        refresh_interval: 60
+        entities:
+          - entity: sensor.air_quality_pm10
+            name: PM10 (μg/m³)
+
+      # Temperature & Humidity Trend
+      - type: history-graph
+        title: Temperature & Humidity (72 Hours)
         hours_to_show: 72
         refresh_interval: 60
         entities:
@@ -188,9 +354,9 @@ views:
           - entity: sensor.air_quality_humidity
             name: Humidity (%)
 
-      # VOC and Gas History
+      # TVOC & Ozone Trend
       - type: history-graph
-        title: VOC & Gases
+        title: VOC & Ozone (72 Hours)
         hours_to_show: 72
         refresh_interval: 60
         entities:
@@ -199,491 +365,166 @@ views:
           - entity: sensor.air_quality_ozone
             name: Ozone (ppb)
 
-      # AQI History
+      # Gas Levels Trend
       - type: history-graph
-        title: Air Quality Index
+        title: Hazardous Gases (72 Hours)
         hours_to_show: 72
         refresh_interval: 60
         entities:
-          - entity: sensor.air_quality_aqi
-            name: AQI
-
-  # =========================================================================
-  # TEMPERATURES VIEW - WS3000 Color-Coded Temperatures
-  # =========================================================================
-  - title: Temperatures
-    path: temperatures
-    icon: mdi:thermometer
-    badges: []
-    cards:
-      - type: markdown
-        content: |
-          # Temperature Monitor
-          **Color Legend:** Blue (cold ≤65°F) → Yellow (65-75°F) → Red (hot ≥75°F)
-
-      # Main Temperature Graph with Color Coding
-      - type: history-graph
-        title: Temperature Trends (72 hours)
-        hours_to_show: 72
-        refresh_interval: 60
-        entities:
-          - entity: sensor.ws3000_sensor_1_temperature_colored
-            name: Outside
-          - entity: sensor.ws3000_sensor_4_temperature_colored
-            name: Inside
-          - entity: sensor.ws3000_sensor_2_temperature_colored
-            name: UnderHouse
-          - entity: sensor.ws3000_sensor_3_temperature_colored
-            name: Attic
-
-  # =========================================================================
-  # DETAILS VIEW - All Sensor Data
-  # =========================================================================
-  - title: Details
-    path: details
-    icon: mdi:format-list-bulleted
-    badges: []
-    cards:
-      - type: markdown
-        content: |
-          # Detailed Sensor Readings
-          All raw sensor data
-
-      # SCD30 Section
-      - type: entities
-        title: SCD30 - CO₂ Sensor
-        show_header_toggle: false
-        entities:
-          - entity: sensor.air_quality_co2
-            name: CO₂ Concentration
-          - entity: sensor.air_quality_temperature
-            name: Temperature
-          - entity: sensor.air_quality_humidity_scd30
-            name: Humidity
-
-      # BME680 Section
-      - type: entities
-        title: BME680 - Environmental
-        show_header_toggle: false
-        entities:
-          - entity: sensor.air_quality_temperature_bme680
-            name: Temperature
-          - entity: sensor.air_quality_humidity
-            name: Humidity
-          - entity: sensor.air_quality_pressure
-            name: Pressure
-          - entity: sensor.air_quality_gas_resistance
-            name: Gas Resistance
-
-      # SGP30 Section
-      - type: entities
-        title: SGP30 - VOC Sensor
-        show_header_toggle: false
-        entities:
-          - entity: sensor.air_quality_tvoc
-            name: Total VOC
-          - entity: sensor.air_quality_eco2
-            name: Equivalent CO₂
-
-      # PMSA003I Section
-      - type: entities
-        title: PMSA003I - Particulate Matter
-        show_header_toggle: false
-        entities:
-          - entity: sensor.air_quality_pm1
-            name: PM1.0
-          - entity: sensor.air_quality_pm2_5
-            name: PM2.5
-          - entity: sensor.air_quality_pm10
-            name: PM10
-          - type: divider
-          - entity: sensor.air_quality_particles_0_3um
-            name: Particles ≥0.3μm
-          - entity: sensor.air_quality_particles_0_5um
-            name: Particles ≥0.5μm
-          - entity: sensor.air_quality_particles_1um
-            name: Particles ≥1.0μm
-          - entity: sensor.air_quality_particles_2_5um
-            name: Particles ≥2.5μm
-
-      # SEN0321 Section
-      - type: entities
-        title: SEN0321 - Ozone
-        show_header_toggle: false
-        entities:
-          - entity: sensor.air_quality_ozone
-            name: Ozone Concentration
-
-      # MGSV2 Section
-      - type: entities
-        title: MGSV2 - Multi-Gas
-        show_header_toggle: false
-        entities:
-          - entity: sensor.air_quality_no2
-            name: Nitrogen Dioxide
           - entity: sensor.air_quality_co
-            name: Carbon Monoxide
-          - entity: sensor.air_quality_ethanol
-            name: Ethanol
-          - entity: sensor.air_quality_voc_mgsv2
-            name: VOC
-
-      # MQ136 Section
-      - type: entities
-        title: MQ136 - Hydrogen Sulfide
-        show_header_toggle: false
-        entities:
-          - entity: sensor.air_quality_h2s_raw
-            name: Raw ADC Value
-          - entity: sensor.air_quality_h2s
-            name: Calculated H₂S
+            name: CO (ppm)
+          - entity: sensor.air_quality_no2
+            name: NO₂ (ppm)
 
   # =========================================================================
-  # SETTINGS VIEW - Threshold Configuration
+  # WEATHER STATIONS VIEW - WS3000 Data
   # =========================================================================
-  - title: Settings
-    path: settings
-    icon: mdi:cog
+  - title: Weather Stations
+    path: weather
+    icon: mdi:weather-cloudy
     badges: []
     cards:
       - type: markdown
         content: |
-          # Settings
-          Configure alert thresholds
+          # 🌡️ Weather Stations (WS3000)
+          6 Remote weather sensor stations
+        card_mod:
+          style: |
+            ha-card {
+              background: linear-gradient(135deg, #2d5016 0%, #4a7c2c 100%);
+              color: white;
+              padding: 15px;
+              border-radius: 8px;
+            }
 
-      - type: entities
-        title: CO₂ Thresholds
-        entities:
-          - entity: input_number.co2_warning_threshold
-            name: Warning Level
-          - entity: input_number.co2_danger_threshold
-            name: Danger Level
+      # Station 1
+      - type: heading
+        heading: Station 1
 
-      - type: entities
-        title: PM2.5 Thresholds
-        entities:
-          - entity: input_number.pm25_warning_threshold
-            name: Warning Level
-          - entity: input_number.pm25_danger_threshold
-            name: Danger Level
-
-      - type: markdown
-        content: |
-          ## Reference Values
-
-          ### CO₂ Levels
-          | Level | Meaning |
-          |-------|---------|
-          | <600 ppm | Excellent |
-          | 600-800 ppm | Good |
-          | 800-1000 ppm | Fair |
-          | 1000-1500 ppm | Poor |
-          | >1500 ppm | Bad |
-
-          ### PM2.5 Levels (AQI)
-          | μg/m³ | AQI | Category |
-          |-------|-----|----------|
-          | 0-12 | 0-50 | Good |
-          | 12-35 | 51-100 | Moderate |
-          | 35-55 | 101-150 | Unhealthy for Sensitive |
-          | 55-150 | 151-200 | Unhealthy |
-          | >150 | >200 | Very Unhealthy |
-
-  # =========================================================================
-  # TABLET VIEW - Optimized for Fire Tablet
-  # =========================================================================
-  - title: Tablet
-    path: tablet
-    icon: mdi:tablet
-    panel: true
-    badges: []
-    cards:
-      - type: custom:layout-card
-        layout_type: grid
-        layout:
-          grid-template-columns: 1fr 1fr 1fr
-          grid-template-rows: auto auto auto
-          grid-gap: 16px
-          padding: 16px
+      - type: horizontal-stack
         cards:
-          # Large AQI Display
-          - type: vertical-stack
-            view_layout:
-              grid-column: span 3
-            cards:
-              - type: markdown
-                content: |
-                  <div style="text-align: center; font-size: 2em; padding: 20px;">
-                    <strong>Air Quality Index: {{ states('sensor.air_quality_aqi') }}</strong>
-                    <br>
-                    <span style="font-size: 0.7em;">{{ state_attr('sensor.air_quality_aqi', 'category') }}</span>
-                  </div>
-
-          # Main Gauges
           - type: gauge
-            entity: sensor.air_quality_co2
-            name: CO₂
-            min: 400
-            max: 2000
-            severity:
-              green: 400
-              yellow: 800
-              red: 1000
+            entity: sensor.ws3000_sensor_1_temperature
+            name: Temperature
+            min: 0
+            max: 50
+            unit: °C
             needle: true
 
           - type: gauge
-            entity: sensor.air_quality_pm2_5
-            name: PM2.5
+            entity: sensor.ws3000_sensor_1_humidity
+            name: Humidity
             min: 0
             max: 100
-            severity:
-              green: 0
-              yellow: 12
-              red: 35
+            unit: '%'
+            needle: true
+
+      # Station 2
+      - type: heading
+        heading: Station 2
+
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.ws3000_sensor_2_temperature
+            name: Temperature
+            min: 0
+            max: 50
+            unit: °C
             needle: true
 
           - type: gauge
-            entity: sensor.air_quality_tvoc
-            name: TVOC
+            entity: sensor.ws3000_sensor_2_humidity
+            name: Humidity
             min: 0
-            max: 1000
-            severity:
-              green: 0
-              yellow: 220
-              red: 660
+            max: 100
+            unit: '%'
             needle: true
 
-          # Environmental Info
-          - type: glance
-            view_layout:
-              grid-column: span 3
-            show_name: true
-            show_icon: true
-            show_state: true
-            columns: 6
-            entities:
-              - entity: sensor.air_quality_temperature
-                name: Temp
-              - entity: sensor.air_quality_humidity
-                name: Humidity
-              - entity: sensor.air_quality_pressure
-                name: Pressure
-              - entity: sensor.air_quality_ozone
-                name: Ozone
-              - entity: sensor.air_quality_co
-                name: CO
-              - entity: sensor.air_quality_no2
-                name: NO₂
-
-  # =========================================================================
-  # AUDIO VIEW - Sonos Speaker Control
-  # =========================================================================
-  - title: Audio
-    path: audio
-    icon: mdi:speaker
-    badges: []
-    cards:
-      # Header
-      - type: markdown
-        content: |
-          # Sonos Speakers
-          Control music across all speakers
-        card_mod:
-          style: |
-            ha-card {
-              background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
-              color: white;
-            }
-
-      # =========================================================================
-      # ACTIVE PLAYBACK SECTION - Show what's playing
-      # =========================================================================
-      - type: horizontal-stack
-        cards:
-          # Speaker Status Row
-          - type: glance
-            title: Speaker Status
-            show_name: true
-            show_icon: true
-            show_state: true
-            columns: 3
-            entities:
-              - entity: media_player.diurnal
-                name: Diurnal
-              - entity: media_player.ickyah
-                name: Ickyah
-              - entity: media_player.nocturnal
-                name: Nocturnal
-
-      # =========================================================================
-      # DIURNAL SPEAKER - Full Control
-      # =========================================================================
-      - type: custom:mushroom-media-player-card
-        entity: media_player.diurnal
-        name: Diurnal Speaker
-        icon: mdi:speaker
-        primary_info: media-title
-        secondary_info: media-artist
-        show_volume_level: true
-        volume_controls:
-          - volume-set
-          - volume-buttons
-        media_controls:
-          - play-pause-stop
-          - next
-          - previous
-        card_mod:
-          style: |
-            ha-card {
-              background: linear-gradient(135deg, rgba(26, 35, 126, 0.8), rgba(13, 71, 161, 0.8));
-            }
-
-      # =========================================================================
-      # ICKYAH SPEAKER - Full Control
-      # =========================================================================
-      - type: custom:mushroom-media-player-card
-        entity: media_player.ickyah
-        name: Ickyah Speaker
-        icon: mdi:speaker
-        primary_info: media-title
-        secondary_info: media-artist
-        show_volume_level: true
-        volume_controls:
-          - volume-set
-          - volume-buttons
-        media_controls:
-          - play-pause-stop
-          - next
-          - previous
-        card_mod:
-          style: |
-            ha-card {
-              background: linear-gradient(135deg, rgba(26, 35, 126, 0.8), rgba(13, 71, 161, 0.8));
-            }
-
-      # =========================================================================
-      # NOCTURNAL SPEAKER - Full Control
-      # =========================================================================
-      - type: custom:mushroom-media-player-card
-        entity: media_player.nocturnal
-        name: Nocturnal Speaker
-        icon: mdi:speaker
-        primary_info: media-title
-        secondary_info: media-artist
-        show_volume_level: true
-        volume_controls:
-          - volume-set
-          - volume-buttons
-        media_controls:
-          - play-pause-stop
-          - next
-          - previous
-        card_mod:
-          style: |
-            ha-card {
-              background: linear-gradient(135deg, rgba(26, 35, 126, 0.8), rgba(13, 71, 161, 0.8));
-            }
-
-      # =========================================================================
-      # SPEAKER GROUPING SECTION - Control which speakers play together
-      # =========================================================================
-      - type: markdown
-        content: |
-          ## Speaker Grouping
-          Tap to group/ungroup speakers for synchronized playback
+      # Station 3
+      - type: heading
+        heading: Station 3
 
       - type: horizontal-stack
         cards:
-          - type: button
-            entity: media_player.diurnal
-            name: Group Diurnal
-            icon: mdi:link-variant
-            tap_action:
-              action: call-service
-              service: media_player.join
-              service_data:
-                entity_id: media_player.diurnal
-                group_members:
-                  - media_player.diurnal
-                  - media_player.ickyah
-                  - media_player.nocturnal
+          - type: gauge
+            entity: sensor.ws3000_sensor_3_temperature
+            name: Temperature
+            min: 0
+            max: 50
+            unit: °C
+            needle: true
 
-          - type: button
-            entity: media_player.diurnal
-            name: Ungroup All
-            icon: mdi:link-variant-off
-            tap_action:
-              action: call-service
-              service: media_player.unjoin
-              service_data:
-                entity_id:
-                  - media_player.diurnal
-                  - media_player.ickyah
-                  - media_player.nocturnal
+          - type: gauge
+            entity: sensor.ws3000_sensor_3_humidity
+            name: Humidity
+            min: 0
+            max: 100
+            unit: '%'
+            needle: true
 
-      # =========================================================================
-      # DETAILED VOLUME CONTROL
-      # =========================================================================
-      - type: markdown
-        content: |
-          ## Individual Volume Control
-          Adjust volume for each speaker independently
-
-      - type: entities
-        title: Volume Levels
-        entities:
-          - entity: media_player.diurnal
-            name: Diurnal Volume
-            attribute: volume_level
-          - entity: media_player.ickyah
-            name: Ickyah Volume
-            attribute: volume_level
-          - entity: media_player.nocturnal
-            name: Nocturnal Volume
-            attribute: volume_level
-
-      # =========================================================================
-      # PLAYBACK CONTROLS
-      # =========================================================================
-      - type: markdown
-        content: |
-          ## Quick Controls
-          Use these buttons to control playback on all speakers
+      # Station 4
+      - type: heading
+        heading: Station 4
 
       - type: horizontal-stack
         cards:
-          - type: button
-            name: Play All
-            icon: mdi:play
-            tap_action:
-              action: call-service
-              service: media_player.media_play
-              service_data:
-                entity_id:
-                  - media_player.diurnal
-                  - media_player.ickyah
-                  - media_player.nocturnal
+          - type: gauge
+            entity: sensor.ws3000_sensor_4_temperature
+            name: Temperature
+            min: 0
+            max: 50
+            unit: °C
+            needle: true
 
-          - type: button
-            name: Pause All
-            icon: mdi:pause
-            tap_action:
-              action: call-service
-              service: media_player.media_pause
-              service_data:
-                entity_id:
-                  - media_player.diurnal
-                  - media_player.ickyah
-                  - media_player.nocturnal
+          - type: gauge
+            entity: sensor.ws3000_sensor_4_humidity
+            name: Humidity
+            min: 0
+            max: 100
+            unit: '%'
+            needle: true
 
-          - type: button
-            name: Next Track
-            icon: mdi:skip-next
-            tap_action:
-              action: call-service
-              service: media_player.media_next_track
-              service_data:
-                entity_id:
-                  - media_player.diurnal
-                  - media_player.ickyah
-                  - media_player.nocturnal
+      # Station 5
+      - type: heading
+        heading: Station 5
+
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.ws3000_sensor_5_temperature
+            name: Temperature
+            min: 0
+            max: 50
+            unit: °C
+            needle: true
+
+          - type: gauge
+            entity: sensor.ws3000_sensor_5_humidity
+            name: Humidity
+            min: 0
+            max: 100
+            unit: '%'
+            needle: true
+
+      # Station 6
+      - type: heading
+        heading: Station 6
+
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.ws3000_sensor_6_temperature
+            name: Temperature
+            min: 0
+            max: 50
+            unit: °C
+            needle: true
+
+          - type: gauge
+            entity: sensor.ws3000_sensor_6_humidity
+            name: Humidity
+            min: 0
+            max: 100
+            unit: '%'
+            needle: true
