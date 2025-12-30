@@ -76,7 +76,7 @@ def writeMQTTLatest(sensorDictionary,sensorName):
 
     if connect(mqtt_client, mqttUN, mqttPW, broker, port):
         try:
-            mqtt_client.publish(macAddress+"/"+sensorName,json.dumps(sensorDictionary))
+            mqtt_client.publish("utsensing/"+sensorName,json.dumps(sensorDictionary))
 
         except Exception as e:
             print("[ERROR] Could not publish data, error: {}".format(e))
