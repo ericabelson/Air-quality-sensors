@@ -7,7 +7,7 @@
 
 ### 1. MQTT Data Publishing
 - All 7 sensors actively publishing data to MQTT broker
-- Verified with: `mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -v`
+- Verified with: `mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -v`
 - Data format is correct (JSON with sensor-specific fields)
 
 ### 2. Repository Code Deployment
@@ -138,7 +138,7 @@ The repo's `homeassistant/configuration.yaml` was **already updated** with packa
 
 | Problem | Test Command | Solution |
 |---------|--------------|----------|
-| MQTT not connected | `mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -C 1` | Check MQTT broker, firewall port 1883 |
+| MQTT not connected | `mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -C 1` | Check MQTT broker, firewall port 1883 |
 | HA won't restart | `ps aux \| grep homeassistant` | Use `sudo kill <PID>`, not systemctl |
 | Config file not loading | `grep "packages:" ~/homeassistant/configuration.yaml` | Add line with sed command above |
 | Can't find HA config | `find ~ -name configuration.yaml 2>/dev/null` | Then use actual path |
@@ -161,7 +161,7 @@ The repo's `homeassistant/configuration.yaml` was **already updated** with packa
 
 ## Deployment Checklist For Next Time
 
-- [ ] Verify MQTT data flowing: `mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -v -C 5`
+- [ ] Verify MQTT data flowing: `mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -v -C 5`
 - [ ] Find actual HA config: `find ~ -name configuration.yaml 2>/dev/null`
 - [ ] Check if packages line exists: `grep "packages:" <config_path>`
 - [ ] Create packages directory: `mkdir -p <config_dir>/packages`

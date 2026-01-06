@@ -14,7 +14,9 @@ homeassistant:
   auth_providers:
     - type: trusted_networks
       trusted_networks:
-        - 192.168.68.0/24
+        # Replace with your local network CIDR (e.g., 192.168.1.0/24)
+        # See LOCAL_NETWORK_CIDR in config.env for your setting
+        - 192.168.x.0/24
       allow_bypass_login: true
     - type: homeassistant
 

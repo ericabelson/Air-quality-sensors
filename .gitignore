@@ -1,24 +1,85 @@
+# =============================================================================
+# Air Quality Sensors - .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
 # Build and Release Folders
+# -----------------------------------------------------------------------------
 bin-debug/
 bin-release/
 [Oo]bj/
 [Bb]in/
 
-# Other files and folders
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyc
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+.env.local
+
+# -----------------------------------------------------------------------------
+# Editor and IDE Artifacts
+# -----------------------------------------------------------------------------
+*.swp
+*.swo
+*~
+.*.swp
+.idea/
+.vscode/
+*.sublime-*
 .settings/
 
-# Executables
+# -----------------------------------------------------------------------------
+# OS Files
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# Executables and Binaries
+# -----------------------------------------------------------------------------
 *.swf
 *.air
 *.ipa
 *.apk
-# Note: yaml files are now allowed for Home Assistant configuration
-# *.yaml
-# *.yml
 
-# But ignore secrets and credentials yaml files
+# -----------------------------------------------------------------------------
+# Secrets and Credentials (Always Ignored)
+# -----------------------------------------------------------------------------
 **/secrets.yaml
 **/credentials.yaml
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+credentials.yml
+*.pem
+*.key
+
+# -----------------------------------------------------------------------------
+# PERSONAL CONFIGURATION FILES
+# -----------------------------------------------------------------------------
+# IMPORTANT: After you sync this repo and have config.env on your local
+# machine, uncomment the line below to stop tracking your personal config.
+# This keeps your network IPs, usernames, etc. private.
+#
+# To uncomment: Remove the "# " before "config.env" below, then run:
+#   git rm --cached config.env
+#   git commit -m "Stop tracking personal config"
+#
+# config.env
+
+# -----------------------------------------------------------------------------
+# Project files
+# -----------------------------------------------------------------------------
+# Note: .project, .actionScriptProperties and .flexProperties should NOT be
+# excluded as they contain compiler settings and other important information
+# for Eclipse / Flash Builder.

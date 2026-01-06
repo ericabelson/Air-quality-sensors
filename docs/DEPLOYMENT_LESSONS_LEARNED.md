@@ -4,6 +4,9 @@
 **System:** Odroid C1+ with Arduino Nano + 7 Sensors
 **Outcome:** ✅ FULLY OPERATIONAL - All sensors reading, data stored locally, MQTT publishing to Home Assistant
 
+> **Note:** This document uses placeholder values like `YOUR_HA_IP`, `YOUR_USER`, etc.
+> Replace these with your actual values from `config.env` in the repository root.
+
 ---
 
 ## Table of Contents
@@ -31,7 +34,7 @@
 5. **User Permissions:** cerberus user with sudo and dialout groups
 6. **Python Packages:** pyserial, paho-mqtt, pynmea2, getmac, netifaces, PyYAML, requests
 7. **Sensor Reading:** All 7 sensors detect and stream data via Arduino on /dev/ttyUSB0
-8. **CSV Storage:** Data properly formatted with timestamps, stored in `/home/cerberus/utData/raw/`
+8. **CSV Storage:** Data properly formatted with timestamps, stored in `/home/YOUR_USER/utData/raw/`
 9. **JSON Output:** Latest values written to `.json` files every ~10 seconds
 10. **MQTT Publishing:** Data published to `utsensing/*` topics successfully
 11. **Auto-Startup:** Cron configured with `@reboot` and `*/10 * * * *` schedules
@@ -48,7 +51,7 @@ Arduino Sensors (I2C)
           → CSV files (stored locally)
           → JSON files (latest values)
             → mintsLatest.py (MQTT publishing)
-              → Home Assistant at 192.168.68.116:1883
+              → Home Assistant at YOUR_HA_IP:1883
 ```
 
 **CSV File Format (Verified):**
@@ -191,7 +194,7 @@ tail ~/utData/raw/001e06122a5a/2025/12/29/MINTS_001e06122a5a_SCD30_2025_12_29.cs
 
 **Problem:** Data was being collected and written to CSV/JSON files, but not published to MQTT topics.
 
-**Symptom:** `mosquitto_sub -h 192.168.68.116 -t "utsensing/#"` showed nothing.
+**Symptom:** `mosquitto_sub -h YOUR_HA_IP -t "utsensing/#"` showed nothing.
 
 **Root Causes (Multiple):**
 1. TLS enabled for local broker (see above)
@@ -201,14 +204,14 @@ tail ~/utData/raw/001e06122a5a/2025/12/29/MINTS_001e06122a5a_SCD30_2025_12_29.cs
 **Troubleshooting Method That Worked:**
 ```bash
 # Step 1: Verify MQTT broker is accessible
-nc -zv 192.168.68.116 1883
+nc -zv YOUR_HA_IP 1883
 # Output: Connection succeeded!
 
 # Step 2: Verify Python can connect
 python3 << 'EOF'
 import paho.mqtt.client as mqttClient
 client = mqttClient.Client()
-client.connect("192.168.68.116", 1883, 60)
+client.connect("YOUR_HA_IP", 1883, 60)
 client.loop_start()
 import time
 time.sleep(2)
@@ -224,7 +227,7 @@ sudo reboot
 pkill -9 nanoReader.py  # Kill old processes
 python3 nanoReader.py 0 > /tmp/nanoReader.log 2>&1 &
 sleep 5
-mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -v
+mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -v
 # Output: DATA FLOWING!
 ```
 
@@ -293,38 +296,38 @@ python3 --version
 
 ```bash
 # Ensure user is in required groups
-sudo usermod -aG dialout cerberus
-sudo usermod -aG sudo cerberus
+sudo usermod -aG dialout YOUR_USER
+sudo usermod -aG sudo YOUR_USER
 
 # CRITICAL: New login required for group changes
 # Logout and SSH back in
 exit
-ssh cerberus@<odroid-ip>
+ssh YOUR_USER@<odroid-ip>
 
 # Verify groups
 groups
-# Should show: cerberus dialout sudo
+# Should show: YOUR_USER dialout sudo
 ```
 
 ### Step 3: mintsDefinitions.py Configuration
 
 **IMPORTANT:** This file needs to be customized for each deployment.
 
-**Template for `/home/cerberus/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py`:**
+**Template for `/home/YOUR_USER/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4/mintsDefinitions.py`:**
 
 Lines 70-73 (Data Folders - MUST MATCH YOUR USERNAME):
 ```python
-dataFolderReference       = "/home/cerberus/utData/reference"      # ← CHANGE cerberus TO YOUR USERNAME
-dataFolderMQTTReference   = "/home/cerberus/utData/referenceMQTT"  # ← CHANGE cerberus TO YOUR USERNAME
-dataFolder                = "/home/cerberus/utData/raw"             # ← CHANGE cerberus TO YOUR USERNAME
-dataFolderMQTT            = "/home/cerberus/utData/rawMQTT"         # ← CHANGE cerberus TO YOUR USERNAME
+dataFolderReference       = "/home/YOUR_USER/utData/reference"      # ← CHANGE cerberus TO YOUR USERNAME
+dataFolderMQTTReference   = "/home/YOUR_USER/utData/referenceMQTT"  # ← CHANGE cerberus TO YOUR USERNAME
+dataFolder                = "/home/YOUR_USER/utData/raw"             # ← CHANGE cerberus TO YOUR USERNAME
+dataFolderMQTT            = "/home/YOUR_USER/utData/rawMQTT"         # ← CHANGE cerberus TO YOUR USERNAME
 ```
 
 Lines 95-98 (MQTT Configuration):
 ```python
 mqttOn                   = True                    # Enable MQTT
 mqttCredentialsFile      = 'mintsXU4/credentials.yml'
-mqttBroker               = "192.168.68.116"        # ← CHANGE TO YOUR HOME ASSISTANT IP
+mqttBroker               = "YOUR_HA_IP"        # ← CHANGE TO YOUR HOME ASSISTANT IP
 mqttPort                 = 1883
 ```
 
@@ -335,7 +338,7 @@ mqttPort                 = 1883
 
 ### Step 4: credentials.yml File
 
-**Create:** `/home/cerberus/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4/credentials.yml`
+**Create:** `/home/YOUR_USER/Air-quality-sensors/firmware/xu4Mqqt/mintsXU4/credentials.yml`
 
 ```yaml
 mqtt:
@@ -352,7 +355,7 @@ mqtt:
 ### Step 5: Create Data Directory
 
 ```bash
-mkdir -p /home/cerberus/utData/raw
+mkdir -p /home/YOUR_USER/utData/raw
 ```
 
 This must exist before nanoReader runs.
@@ -365,13 +368,13 @@ crontab -e
 
 Add these exact lines:
 ```cron
-@reboot cd /home/cerberus/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
-*/10 * * * * cd /home/cerberus/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
+@reboot cd /home/YOUR_USER/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
+*/10 * * * * cd /home/YOUR_USER/Air-quality-sensors/firmware/xu4Mqqt && ./runAll.sh
 ```
 
 And ensure runAll.sh is executable:
 ```bash
-chmod +x /home/cerberus/Air-quality-sensors/firmware/xu4Mqqt/runAll.sh
+chmod +x /home/YOUR_USER/Air-quality-sensors/firmware/xu4Mqqt/runAll.sh
 ```
 
 ---
@@ -422,11 +425,11 @@ EOF
 **Test MQTT broker connectivity:**
 ```bash
 # 1. Verify port is open
-nc -zv 192.168.68.116 1883
+nc -zv YOUR_HA_IP 1883
 # Output: Connection succeeded! (or Connection refused)
 
 # 2. Test anonymous connection
-mosquitto_pub -h 192.168.68.116 -t "test/odroid" -m "Hello"
+mosquitto_pub -h YOUR_HA_IP -t "test/odroid" -m "Hello"
 # No error = anonymous allowed
 ```
 
@@ -456,7 +459,7 @@ mosquitto_pub -h 192.168.68.116 -t "test/odroid" -m "Hello"
    NO  → Parsing issue, reboot system
 
 5. Subscribe and listen
-   mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -v
+   mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -v
    Should see data streaming
 ```
 
@@ -563,7 +566,7 @@ Data Collected but Not Publishing?
 │  └─ NO  → Serial port issue
 │
 ├─ Verify MQTT broker accessible
-│  ├─ nc -zv 192.168.68.116 1883
+│  ├─ nc -zv YOUR_HA_IP 1883
 │  └─ Should show "Connection succeeded"
 │
 └─ Check mintsLatest.py
@@ -585,7 +588,7 @@ Arduino Not Detected?
 │
 ├─ Check user permissions
 │  ├─ ls -la /dev/ttyUSB0
-│  ├─ usermod -aG dialout cerberus
+│  ├─ usermod -aG dialout YOUR_USER
 │  └─ Logout and login (or reboot)
 │
 └─ If port is USB1 instead of USB0 (after reconnect)
