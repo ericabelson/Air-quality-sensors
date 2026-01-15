@@ -15,7 +15,8 @@ The UTSensing integration includes:
 - Home Assistant 2023.9+ (for package support)
 - MQTT Broker integration configured (Mosquitto or similar)
 - Air quality sensor Odroid running and publishing MQTT data
-- Network connectivity: `192.168.68.116` (HA) ↔ `192.168.68.109` (Odroid) ↔ `192.168.68.116:1883` (MQTT)
+- Network connectivity: Your HA, Odroid, and MQTT broker must be on the same network
+- Your network settings should be configured in `config.env` in the repository root
 
 ## Step 1: Verify MQTT Broker Connection
 
@@ -32,8 +33,8 @@ utsensing/BME680 → {"temperature": 22.1, "pressure": 1013.25, "humidity": 45.1
 ```
 
 If no data appears:
-- Verify Odroid is running: `ssh cerberus@192.168.68.109 "ps aux | grep nanoReader"`
-- Check MQTT broker is accessible: `ssh cerberus@192.168.68.109 "mosquitto_sub -h 192.168.68.116 -t 'utsensing/#' -C 1"`
+- Verify Odroid is running: `ssh YOUR_ODROID_USER@YOUR_ODROID_IP "ps aux | grep nanoReader"`
+- Check MQTT broker is accessible: `ssh YOUR_ODROID_USER@YOUR_ODROID_IP "mosquitto_sub -h YOUR_HA_IP -t 'utsensing/#' -C 1"`
 - Ensure TLS is disabled in mintsLatest.py (lines 53-56 should be commented)
 
 ## Step 2: Deploy Configuration Files
@@ -86,7 +87,7 @@ After restarting Home Assistant:
 - `sensor.air_quality_aqi` (calculated Air Quality Index)
 
 **If sensors show "unavailable":**
-- Check MQTT is still publishing: `mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -v`
+- Check MQTT is still publishing: `mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -v`
 - Wait 1-2 minutes for first data (sensors need to publish)
 - Go to **Settings > System > Restart** and try again
 
@@ -178,11 +179,11 @@ For continuous monitoring of sensor reliability:
 
 1. **Monitor JSON Files** on Odroid:
    ```bash
-   # SSH into Odroid
-   ssh cerberus@192.168.68.109
+   # SSH into Odroid (use your username and IP from config.env)
+   ssh YOUR_ODROID_USER@YOUR_ODROID_IP
 
-   # Check sensors are updating
-   watch -n 5 "ls -la ~/utData/raw/001e06122a5a/*.json | tail -10"
+   # Check sensors are updating (MAC address folder will be unique to your device)
+   watch -n 5 "ls -la ~/utData/raw/*/*.json | tail -10"
    ```
 
 2. **Check HA Logs** for errors:
@@ -222,7 +223,7 @@ When accessing data in templates, use these exact field names:
 
 ### Sensors show "unavailable"
 1. Verify MQTT broker is connected
-2. Check Odroid is publishing: `mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -C 2`
+2. Check Odroid is publishing: `mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -C 2`
 3. Check Home Assistant logs for MQTT errors
 4. Restart Home Assistant: Settings > System > Restart
 
@@ -242,7 +243,7 @@ When accessing data in templates, use these exact field names:
 3. Increase HA MQTT retry settings in configuration.yaml:
 ```yaml
 mqtt:
-  broker: 192.168.68.116
+  broker: YOUR_HA_IP  # Your Home Assistant IP from config.env
   port: 1883
   keepalive: 60
   protocol: 3.1.1
@@ -285,7 +286,9 @@ For issues or questions:
 1. Check the **Troubleshooting** section above
 2. Review **Settings > System > Logs** in Home Assistant
 3. Verify Odroid is still running sensors: `ps aux | grep nanoReader`
-4. Check MQTT is accessible: `mosquitto_sub -h 192.168.68.116 -t "utsensing/#"`
+4. Check MQTT is accessible: `mosquitto_sub -h YOUR_HA_IP -t "utsensing/#"`
+
+> **Note:** Replace `YOUR_HA_IP` and `YOUR_ODROID_IP` with your actual IPs from `config.env`
 
 ---
 

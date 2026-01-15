@@ -140,11 +140,11 @@ Get sensor data in automations:
 Subscribe to raw MQTT data (for debugging):
 
 ```bash
-# All sensors
-mosquitto_sub -h 192.168.68.116 -t "utsensing/#" -v
+# All sensors (replace YOUR_HA_IP with your Home Assistant IP - see config.env)
+mosquitto_sub -h YOUR_HA_IP -t "utsensing/#" -v
 
 # Specific sensor
-mosquitto_sub -h 192.168.68.116 -t "utsensing/SCD30"
+mosquitto_sub -h YOUR_HA_IP -t "utsensing/SCD30"
 ```
 
 ## Troubleshooting Checklist
@@ -187,10 +187,12 @@ mosquitto_sub -h 192.168.68.116 -t "utsensing/SCD30"
 
 ## System Status
 
-**Odroid IP**: 192.168.68.109
-**Home Assistant IP**: 192.168.68.116
-**MQTT Broker**: 192.168.68.116:1883
-**Data Directory**: /home/cerberus/utData/raw/
+> **Note:** Your specific IPs and settings are stored in `config.env` in the repository root.
+
+**Odroid IP**: See `ODROID_IP` in config.env
+**Home Assistant IP**: See `HOME_ASSISTANT_IP` in config.env
+**MQTT Broker**: See `MQTT_BROKER_IP` in config.env (port 1883)
+**Data Directory**: `/home/<your-username>/utData/raw/`
 **Sensor Count**: 7
 **Entity Count**: 30+
 
