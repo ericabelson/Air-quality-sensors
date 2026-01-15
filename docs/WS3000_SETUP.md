@@ -466,6 +466,70 @@ docker ps | grep homeassistant
 
 ---
 
+## Setting a Static IP Address
+
+By default, the Raspberry Pi gets an IP address from your router (DHCP). If your router reassigns IP addresses, your display and other services may break. To prevent this, set a static IP:
+
+### Using NetworkManager (Ubuntu-based systems)
+
+Find your connection name:
+```bash
+sudo nmcli connection show
+```
+
+Look for your WiFi connection (should be `netplan-wlan0-*` or similar). Then set a static IP:
+
+```bash
+sudo nmcli connection modify YOUR_CONNECTION_NAME ipv4.method manual \
+  ipv4.addresses 192.168.68.109/24 \
+  ipv4.gateway 192.168.68.1 \
+  ipv4.dns "8.8.8.8 8.8.4.4"
+```
+
+Apply changes:
+```bash
+sudo nmcli connection up YOUR_CONNECTION_NAME
+```
+
+Verify:
+```bash
+ip addr show wlan0
+```
+
+### Using Traditional /etc/dhcpcd.conf (Raspberry Pi OS)
+
+Edit the DHCP config:
+```bash
+sudo nano /etc/dhcpcd.conf
+```
+
+Add to the bottom:
+```
+interface wlan0
+static ip_address=192.168.68.109/24
+static routers=192.168.68.1
+static domain_name_servers=8.8.8.8 8.8.4.4
+```
+
+Save and restart:
+```bash
+sudo systemctl restart dhcpcd
+```
+
+### Using Router DHCP Reservation (Recommended for Simplicity)
+
+Alternatively, configure your router to always assign the same IP to your Raspberry Pi:
+
+1. Access your router admin page (usually `192.168.68.1`)
+2. Find DHCP Reservations or Static DHCP
+3. Add a reservation for your Raspberry Pi's MAC address (find it with `ip link show`)
+4. Set the reserved IP to `192.168.68.109`
+5. Save
+
+This way the router manages the assignment and you don't have to manually configure it on the Pi.
+
+---
+
 ## Troubleshooting
 
 ### USB Device Not Found
@@ -519,6 +583,46 @@ If fewer than 8 sensors appear:
 - Move sensors closer to the console
 - Pair sensors using the console menu
 
+### MQTT Connection Timeout ("connack timeout")
+
+If the ws3000 service logs show `MQTT error: Error: connack timeout`, this usually means the MQTT broker URL in the script is pointing to an old/invalid IP address.
+
+**Root Cause:** The `MQTT_BROKER` variable in `ws3000-mqtt.js` should be set to `localhost:1883`, not a static IP address. If it's hardcoded to an IP (e.g., `mqtt://192.168.68.116:1883`), it will fail if:
+- The device's IP address changes
+- The Raspberry Pi is on a different network
+- The IP was from a previous device
+
+**Fix:**
+
+1. Open the script:
+   ```bash
+   nano ~/ws3000/ws3000-mqtt.js
+   ```
+
+2. Find this line:
+   ```javascript
+   const MQTT_BROKER = 'mqtt://192.168.68.XXX:1883';  // or any IP address
+   ```
+
+3. Change it to:
+   ```javascript
+   const MQTT_BROKER = 'mqtt://localhost:1883';
+   ```
+
+4. Save and restart:
+   ```bash
+   sudo systemctl restart ws3000
+   ```
+
+5. Verify connection:
+   ```bash
+   sudo journalctl -u ws3000 -f
+   ```
+
+You should now see "Connected to MQTT broker" and sensor data being published.
+
+**Prevention:** To prevent IP address changes from affecting your setup in the future, configure a **static IP** on the Raspberry Pi. See [Setting a Static IP Address](#setting-a-static-ip-address) below.
+
 ### Service Won't Start
 
 Check logs:
@@ -530,6 +634,7 @@ Common issues:
 - Wrong username in service file
 - Node.js not installed
 - npm packages not installed in ~/ws3000
+- MQTT broker URL is incorrect (see "MQTT Connection Timeout" above)
 
 ---
 
