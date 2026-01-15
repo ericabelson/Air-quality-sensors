@@ -67,15 +67,10 @@ credentials.yml
 # -----------------------------------------------------------------------------
 # PERSONAL CONFIGURATION FILES
 # -----------------------------------------------------------------------------
-# IMPORTANT: After you sync this repo and have config.env on your local
-# machine, uncomment the line below to stop tracking your personal config.
-# This keeps your network IPs, usernames, etc. private.
+# Your personal network settings (IPs, usernames, etc.) are stored in config.env
+# This file is now ignored so your private info won't be pushed to GitHub.
 #
-# To uncomment: Remove the "# " before "config.env" below, then run:
-#   git rm --cached config.env
-#   git commit -m "Stop tracking personal config"
-#
-# config.env
+config.env
 
 # -----------------------------------------------------------------------------
 # Project files
