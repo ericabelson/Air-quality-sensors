@@ -1,0 +1,279 @@
+views:
+  - title: Home
+    sections:
+      # =========================================================================
+      # CO2 MONITORING SECTION - Dual Sensor Setup
+      # =========================================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: Air Quality & Security
+            heading_style: title
+            badges:
+              - type: entity
+                entity: alarm_control_panel.soteria
+              - type: entity
+                entity: update.alarmo_update
+              - type: entity
+                entity: switch.diurnal_loudness
+              - type: entity
+                entity: alarm_control_panel.soteria
+            grid_options:
+              columns: full
+              rows: 3
+
+          # Dual CO2 Gauges (Aranet4 + SCD30)
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.aranet4_22012_carbon_dioxide
+                name: CO2 (Aranet4)
+                min: 400
+                max: 3000
+                needle: false
+                severity:
+                  green: 500
+                  yellow: 800
+                  red: 1000
+              - type: gauge
+                entity: sensor.air_quality_co2
+                name: CO2 (SCD30)
+                min: 400
+                max: 3000
+                needle: false
+                severity:
+                  green: 500
+                  yellow: 800
+                  red: 1000
+
+          # Aranet4 Environmental Readings
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.aranet4_22012_temperature
+                name: Temperature
+                icon: mdi:thermometer
+              - type: entity
+                entity: sensor.aranet4_22012_humidity
+                name: Humidity
+                icon: mdi:water-percent
+              - type: entity
+                entity: sensor.aranet4_22012_pressure
+                name: Pressure
+                icon: mdi:gauge
+
+          # Dual CO2 Graphs
+          - type: horizontal-stack
+            cards:
+              - graph: line
+                type: sensor
+                entity: sensor.aranet4_22012_carbon_dioxide
+                detail: 1
+                hours_to_show: 72
+                name: CO2 (Aranet4)
+              - graph: line
+                type: sensor
+                entity: sensor.air_quality_co2
+                detail: 1
+                hours_to_show: 72
+                name: CO2 (SCD30)
+            grid_options:
+              columns: 12
+              rows: 2
+
+      # =========================================================================
+      # MEDIA & CONTROLS SECTION
+      # =========================================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: Media & Lighting
+          - type: tile
+            entity: sensor.sun_next_rising
+          - type: tile
+            entity: sensor.sun_next_setting
+          - type: media-control
+            entity: media_player.diurnal
+          - type: media-control
+            entity: media_player.nocturnal
+          - type: media-control
+            entity: media_player.ickyah
+
+      # =========================================================================
+      # ALARM PANEL SECTION
+      # =========================================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: Security System
+          - type: alarm-panel
+            states:
+              - arm_home
+              - arm_away
+            entity: alarm_control_panel.alarmo
+            grid_options:
+              columns: 12
+              rows: 4
+
+      # =========================================================================
+      # WEATHER SENSORS - Temperature, Humidity, Dew Point
+      # With Current Values Next to Graphs
+      # =========================================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: Environmental Monitoring
+            heading_style: title
+            grid_options:
+              columns: full
+
+          # ==================
+          # TEMPERATURE SECTION
+          # ==================
+          - type: heading
+            heading: Temperature
+            heading_style: subtitle
+            grid_options:
+              columns: full
+
+          # Current Temperature Values
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.ws3000_sensor_1_temperature
+                name: Outside
+                icon: mdi:home-thermometer-outline
+              - type: entity
+                entity: sensor.ws3000_sensor_4_temperature
+                name: Inside
+                icon: mdi:thermometer
+              - type: entity
+                entity: sensor.ws3000_sensor_2_temperature
+                name: UnderHouse
+                icon: mdi:thermometer-low
+              - type: entity
+                entity: sensor.ws3000_sensor_3_temperature
+                name: Attic
+                icon: mdi:thermometer-high
+            grid_options:
+              columns: 6
+              rows: 1
+
+          # Temperature History Graph
+          - type: history-graph
+            title: Temperature History (72 Hours)
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.ws3000_sensor_1_temperature_colored
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_temperature_colored
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_temperature_colored
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_temperature_colored
+                name: Attic
+            grid_options:
+              columns: 12
+              rows: 3
+
+          # ==================
+          # HUMIDITY SECTION
+          # ==================
+          - type: heading
+            heading: Humidity
+            heading_style: subtitle
+            grid_options:
+              columns: full
+
+          # Current Humidity Values
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.ws3000_sensor_1_humidity
+                name: Outside
+                icon: mdi:water-percent
+              - type: entity
+                entity: sensor.ws3000_sensor_4_humidity
+                name: Inside
+                icon: mdi:water-percent
+              - type: entity
+                entity: sensor.ws3000_sensor_2_humidity
+                name: UnderHouse
+                icon: mdi:water-percent
+              - type: entity
+                entity: sensor.ws3000_sensor_3_humidity
+                name: Attic
+                icon: mdi:water-percent
+            grid_options:
+              columns: 6
+              rows: 1
+
+          # Humidity History Graph
+          - type: history-graph
+            title: Humidity History (72 Hours)
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.ws3000_sensor_1_humidity_colored
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_humidity_colored
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_humidity_colored
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_humidity_colored
+                name: Attic
+            grid_options:
+              columns: 12
+              rows: 3
+
+          # ==================
+          # DEW POINT SECTION
+          # ==================
+          - type: heading
+            heading: Dew Point
+            heading_style: subtitle
+            grid_options:
+              columns: full
+
+          # Current Dew Point Values
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.ws3000_sensor_1_dew_point
+                name: Outside
+                icon: mdi:water-thermometer
+              - type: entity
+                entity: sensor.ws3000_sensor_4_dew_point
+                name: Inside
+                icon: mdi:water-thermometer
+              - type: entity
+                entity: sensor.ws3000_sensor_2_dew_point
+                name: UnderHouse
+                icon: mdi:water-thermometer
+              - type: entity
+                entity: sensor.ws3000_sensor_3_dew_point
+                name: Attic
+                icon: mdi:water-thermometer
+            grid_options:
+              columns: 6
+              rows: 1
+
+          # Dew Point History Graph
+          - type: history-graph
+            title: Dew Point History (72 Hours)
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.ws3000_sensor_1_dew_point
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_dew_point
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_dew_point
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_dew_point
+                name: Attic
+            grid_options:
+              columns: 12
+              rows: 3
+        column_span: 2
