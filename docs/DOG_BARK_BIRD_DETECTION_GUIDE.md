@@ -37,13 +37,13 @@ This guide will help you set up a comprehensive audio detection system that:
 ### How It All Works Together
 
 ```
-┌─────────────────┐
-│   iPhone 7      │  Captures audio with built-in microphone
-│  (Microphone)   │  Streams audio over network or USB
-└────────┬────────┘
-         │
-         │ Audio Stream
-         ▼
+┌──────────────────────────────┐
+│   iPhone 7 + Periscope HD    │  Captures audio with built-in microphone
+│   (RTSP Network Camera)      │  Streams RTSP: rtsp://IP:8554/live.sdp
+└──────────────┬───────────────┘
+               │
+               │ RTSP Audio Stream (G.711, 8kHz)
+               ▼
 ┌─────────────────────────────────────────────────────────┐
 │           Raspberry Pi (Your Existing System)           │
 │                                                         │
@@ -169,46 +169,124 @@ You asked about SD card vs USB storage. Here's my advice:
 
 ## iPhone Setup as Microphone
 
-Your iPhone 7 can act as a network microphone. Here are two methods:
+Your iPhone 7 acts as a professional network microphone using Periscope HD.
 
-### Method 1: AudioRelay App (EASIEST - RECOMMENDED) ⭐
+### Periscope HD Setup (RECOMMENDED METHOD) ⭐
 
-This is the simplest method. AudioRelay turns your iPhone into a wireless microphone.
+**Periscope HD** is a professional iOS app that turns your iPhone into an RTSP (Real-Time Streaming Protocol) camera with high-quality audio streaming. This is superior to other methods because it's industry-standard, reliable for 24/7 operation, and includes automatic reconnection.
 
-#### Step 1: Install AudioRelay on iPhone
+**App Store:** [Periscope HD - H.264 RTSP Cam](https://apps.apple.com/us/app/periscope-hd-h-264-rtsp-cam/id1095600218)
+
+**Technical Specs:**
+- Video: H.264, 1280x720, 30 fps
+- **Audio: G.711 PCMU, 8000 Hz** (perfect for voice/bark detection)
+- Protocol: RTSP over UDP or TCP
+- Cost: Free
+
+#### Step 1: Install Periscope HD on iPhone
 
 1. Open **App Store** on your iPhone 7
-2. Search for **"AudioRelay"**
-3. Download and install **AudioRelay: Stream PC Audio** (free version is fine)
-4. Open the app
+2. Search for **"Periscope HD"**
+3. Download **"Periscope HD - H.264 RTSP Cam"** by **Alice Dev Team**
+   - Important: Make sure it's the correct app (blue/teal icon)
+4. Open the app and **grant all permissions:**
+   - Camera Access → Allow
+   - Microphone Access → Allow (CRITICAL!)
+   - Local Network Access → Allow
 
-#### Step 2: Install AudioRelay Server on Raspberry Pi
+#### Step 2: Configure Periscope HD
+
+1. In the app, tap the **Settings gear icon** ⚙️ at the bottom
+2. **Audio Settings:**
+   - Ensure "Audio Enabled" is ON (toggle should be green/blue)
+3. **Network Settings:**
+   - Port: 8554 (default - don't change)
+   - Transport: UDP (default - best latency)
+4. **Note your RTSP URL** - looks like:
+   ```
+   rtsp://192.168.1.XXX:8554/live.sdp
+   ```
+   Write this down! You'll need it for Raspberry Pi setup.
+
+5. **iPhone Settings (CRITICAL):**
+   - Settings → Display & Brightness → Auto-Lock → **Never**
+   - Settings → Battery → Low Power Mode → **OFF**
+   - Keep iPhone plugged into charger 24/7
+
+#### Step 3: Start Streaming
+
+1. In Periscope HD app, tap the **"Start"** button (center of screen)
+2. You should see:
+   - Red **"LIVE"** indicator at top
+   - Stream duration timer counting up
+3. **Stream continues even when screen locks!** (huge advantage)
+
+#### Step 4: Set Up Raspberry Pi to Capture Stream
+
+📄 **See complete detailed instructions:** [IPHONE_MICROPHONE_SETUP.md](IPHONE_MICROPHONE_SETUP.md)
+
+**Quick version:**
 
 SSH into your Raspberry Pi:
 ```bash
 ssh pi@<your-pi-ip-address>
 ```
 
-Install AudioRelay server:
+Install required tools:
 ```bash
-# Download and install
-cd ~
-wget https://github.com/grishka/AudioRelay/releases/latest/download/audiorelay-server-linux-arm64.tar.gz
-tar -xzf audiorelay-server-linux-arm64.tar.gz
-cd audiorelay-server
+sudo apt-get update
+sudo apt-get install -y ffmpeg alsa-utils
 
-# Run the server
-./audiorelay-server
+# Create ALSA loopback device
+sudo modprobe snd-aloop
+echo "snd-aloop" | sudo tee -a /etc/modules
 ```
 
-#### Step 3: Connect iPhone to Raspberry Pi
+Create streaming service:
+```bash
+sudo nano /etc/systemd/system/iphone-audio-stream.service
+```
 
-1. On your iPhone, open AudioRelay app
-2. Tap **"Connect"**
-3. Select your Raspberry Pi from the list (should appear automatically on same WiFi network)
-4. Tap **"Start Streaming"**
+Paste this (update RTSP URL with YOUR iPhone IP):
+```ini
+[Unit]
+Description=iPhone Periscope HD Audio Stream
+After=network.target
 
-That's it! Your iPhone is now streaming audio to the Raspberry Pi.
+[Service]
+Type=simple
+User=pi
+Restart=always
+RestartSec=10
+ExecStart=/usr/bin/ffmpeg \
+    -rtsp_transport udp \
+    -i rtsp://192.168.1.150:8554/live.sdp \
+    -vn -acodec pcm_s16le -ar 16000 -ac 1 -f alsa hw:1,0
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable iphone-audio-stream.service
+sudo systemctl start iphone-audio-stream.service
+
+# Verify running
+sudo systemctl status iphone-audio-stream.service
+```
+
+Test audio capture:
+```bash
+# Record 5 seconds from loopback device
+arecord -D hw:1,1 -f S16_LE -r 16000 -c 1 -d 5 test.wav
+
+# Play it back - you should hear iPhone audio!
+aplay test.wav
+```
+
+That's it! Your iPhone is now streaming professional-quality audio to the Raspberry Pi via RTSP.
 
 ---
 
@@ -267,7 +345,7 @@ ideviceinfo
 
 ---
 
-**RECOMMENDATION:** Start with **Method 1 (AudioRelay)** - it's the easiest and works great for this project.
+**RECOMMENDATION:** Use **Periscope HD** - it's professional, reliable for 24/7 operation, and uses industry-standard RTSP protocol.
 
 ---
 
@@ -503,12 +581,12 @@ python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(f'{i}: {p.get_device_inf
 
 You should see a list like:
 ```
-0: bcm2835 Headphones
-1: USB Audio Device
-2: AudioRelay
+card 0: Headphones [bcm2835 Headphones], device 0: bcm2835 Headphones [bcm2835 Headphones]
+card 1: Loopback [Loopback], device 0: Loopback PCM [Loopback PCM]
+card 1: Loopback [Loopback], device 1: Loopback PCM [Loopback PCM]
 ```
 
-Note the device number for your iPhone audio source.
+The ALSA Loopback device is what we use to capture iPhone audio from the Periscope HD stream.
 
 ### Step 4: Configure Dog Bark Detector
 

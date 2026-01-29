@@ -47,11 +47,29 @@ Before starting, make sure you have:
 
 ---
 
-### Phase 2: iPhone Microphone (30 minutes)
+### Phase 2: iPhone Microphone with Periscope HD (45 minutes)
 
-1. **Install AudioRelay app** on iPhone from App Store
-2. **Install AudioRelay server** on Raspberry Pi
-3. **Connect and test** audio streaming
+**Periscope HD** turns your iPhone into a professional RTSP camera with audio streaming!
+
+#### iPhone Setup (15 minutes)
+
+1. **Install Periscope HD** from App Store
+   - Search for "Periscope HD - H.264 RTSP Cam" by Alice Dev Team
+   - Download and install (free app)
+   - Grant Camera, Microphone, and Local Network permissions
+
+2. **Configure Periscope HD:**
+   - Open app → Tap Settings gear icon ⚙️
+   - Ensure Audio is ON
+   - Note your RTSP URL (looks like `rtsp://192.168.1.XXX:8554/live.sdp`)
+   - Tap Start to begin streaming
+
+3. **iPhone Settings:**
+   - Settings → Display & Brightness → Auto-Lock → **Never**
+   - Settings → Battery → Low Power Mode → **OFF**
+   - Keep iPhone plugged in to charger 24/7
+
+#### Raspberry Pi Setup (30 minutes)
 
 📄 **Detailed Guide:** [IPHONE_MICROPHONE_SETUP.md](IPHONE_MICROPHONE_SETUP.md)
 
@@ -60,12 +78,49 @@ Before starting, make sure you have:
 # SSH to Pi
 ssh pi@<your-pi-ip>
 
-# Install AudioRelay
-mkdir -p ~/audiorelay && cd ~/audiorelay
-wget https://github.com/grishka/AudioRelay/releases/latest/download/audiorelay-server-linux-arm64.tar.gz
-tar -xzf audiorelay-server-linux-arm64.tar.gz
-chmod +x audiorelay
-./audiorelay
+# Install required tools
+sudo apt-get update
+sudo apt-get install -y ffmpeg gstreamer1.0-tools alsa-utils
+
+# Test RTSP connection (replace with YOUR iPhone IP)
+ffprobe rtsp://192.168.1.150:8554/live.sdp
+
+# Create ALSA loopback device
+sudo modprobe snd-aloop
+echo "snd-aloop" | sudo tee -a /etc/modules
+
+# Create streaming service
+sudo nano /etc/systemd/system/iphone-audio-stream.service
+```
+
+**Paste into the service file** (update IP address with YOUR iPhone IP):
+```ini
+[Unit]
+Description=iPhone Periscope HD Audio Stream
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+Restart=always
+RestartSec=10
+ExecStart=/usr/bin/ffmpeg \
+    -rtsp_transport udp \
+    -i rtsp://192.168.1.150:8554/live.sdp \
+    -vn -acodec pcm_s16le -ar 16000 -ac 1 -f alsa hw:1,0
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Enable and start:**
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable iphone-audio-stream.service
+sudo systemctl start iphone-audio-stream.service
+
+# Verify it's running
+sudo systemctl status iphone-audio-stream.service
 ```
 
 ---
@@ -165,7 +220,7 @@ Tell the detector which audio device to use.
 # List audio devices
 arecord -l
 
-# Note the card number for AudioRelay (e.g., card 2)
+# Note the card number for ALSA loopback (e.g., card 1)
 
 # Edit detector configuration
 cd ~/Air-quality-sensors/scripts
@@ -459,7 +514,7 @@ docker restart homeassistant
 
 ### No Audio Detected
 
-1. Check iPhone AudioRelay is connected and streaming
+1. Check iPhone Periscope HD is streaming (red "LIVE" indicator)
 2. Verify audio device number:
    ```bash
    arecord -l
