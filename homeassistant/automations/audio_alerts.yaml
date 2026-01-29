@@ -1,0 +1,328 @@
+---
+# Audio Detection Automations
+# ============================
+# Automations for dog bark and bird detection alerts and logging
+
+# ============================================================================
+# DOG BARK ALERTS
+# ============================================================================
+
+# Alert when excessive barking detected
+- id: 'bark_excessive_alert'
+  alias: "Alert: Excessive Barking"
+  description: "Notify when dog has been barking for more than 10 minutes continuously"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.dog_barking
+      to: 'on'
+      for:
+        minutes: 10
+  condition:
+    - condition: state
+      entity_id: input_boolean.bark_notifications
+      state: 'on'
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ Excessive Barking Alert"
+        message: >
+          Dog has been barking continuously for over 10 minutes.
+          Current decibel level: {{ states('sensor.audio_decibels') }} dB
+        notification_id: "bark_excessive"
+
+    - service: notify.mobile_app
+      data:
+        title: "Excessive Barking"
+        message: "Dog barking for 10+ minutes at {{ states('sensor.audio_decibels') }} dB"
+
+# Log bark events to file
+- id: 'bark_event_logger'
+  alias: "Log Bark Event"
+  description: "Log each bark detection to file for analysis"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.dog_barking
+      to: 'on'
+  action:
+    - service: notify.file_logger
+      data:
+        message: >
+          [{{ now().strftime('%Y-%m-%d %H:%M:%S') }}] Bark detected -
+          Confidence: {{ states('sensor.dog_bark_confidence') }}% -
+          Decibels: {{ states('sensor.audio_decibels') }} dB -
+          Class: {{ states('sensor.dog_bark_class') }}
+
+# Alert when very loud barking (>90dB)
+- id: 'bark_very_loud_alert'
+  alias: "Alert: Very Loud Barking"
+  description: "Notify when barking exceeds 90 decibels"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.audio_decibels
+      above: 90
+  condition:
+    - condition: state
+      entity_id: binary_sensor.dog_barking
+      state: 'on'
+    - condition: state
+      entity_id: input_boolean.bark_notifications
+      state: 'on'
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "🔊 Very Loud Barking!"
+        message: >
+          Barking detected at {{ states('sensor.audio_decibels') }} dB.
+          This is unusually loud and may indicate distress.
+        notification_id: "bark_very_loud"
+
+# Bark quiet notification (barking stopped after long period)
+- id: 'bark_quiet_notification'
+  alias: "Notify: Barking Stopped"
+  description: "Notify when barking stops after extended period"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.dog_barking
+      from: 'on'
+      to: 'off'
+      for:
+        minutes: 5
+  condition:
+    - condition: template
+      value_template: >
+        {{ (as_timestamp(now()) - as_timestamp(trigger.from_state.last_changed)) > 600 }}
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "✅ Barking Stopped"
+        message: >
+          Dog has been quiet for 5 minutes after extended barking period.
+        notification_id: "bark_quiet"
+
+# ============================================================================
+# BIRD DETECTION ALERTS
+# ============================================================================
+
+# Alert on rare bird detection (high confidence)
+- id: 'rare_bird_alert'
+  alias: "Alert: Rare Bird Detected"
+  description: "Notify when a bird is detected with very high confidence (90%+)"
+  trigger:
+    - platform: mqtt
+      topic: "birdnet/detection"
+  condition:
+    - condition: template
+      value_template: "{{ trigger.payload_json.confidence > 0.90 }}"
+    - condition: state
+      entity_id: input_boolean.bird_notifications
+      state: 'on'
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "🐦 Rare Bird Detected!"
+        message: >
+          {{ trigger.payload_json.common_name }} detected with
+          {{ (trigger.payload_json.confidence * 100) | round(0) }}% confidence!
+          Scientific name: {{ trigger.payload_json.scientific_name }}
+        notification_id: "rare_bird_{{ trigger.payload_json.scientific_name }}"
+
+# Log all bird detections
+- id: 'bird_detection_logger'
+  alias: "Log Bird Detection"
+  description: "Log each bird detection for analysis"
+  trigger:
+    - platform: mqtt
+      topic: "birdnet/detection"
+  action:
+    - service: notify.file_logger
+      data:
+        message: >
+          [{{ now().strftime('%Y-%m-%d %H:%M:%S') }}] Bird detected -
+          Species: {{ trigger.payload_json.common_name }} -
+          Confidence: {{ (trigger.payload_json.confidence * 100) | round(0) }}%
+
+# Update bird species counter (count unique species)
+- id: 'bird_species_counter'
+  alias: "Update Bird Species Count"
+  description: "Track daily unique bird species count"
+  trigger:
+    - platform: mqtt
+      topic: "birdnet/detection"
+  action:
+    # This would need custom Python script to track unique species
+    # For now, just log the event
+    - service: logbook.log
+      data:
+        name: "Bird Species"
+        message: >
+          {{ trigger.payload_json.common_name }} detected
+
+# ============================================================================
+# DAILY REPORTS
+# ============================================================================
+
+# Generate daily bark report
+- id: 'daily_bark_report'
+  alias: "Daily Bark Report"
+  description: "Generate and send daily bark detection summary"
+  trigger:
+    - platform: time
+      at: "23:59:00"
+  action:
+    - service: notify.persistent_notification
+      data:
+        title: "📊 Daily Bark Report"
+        message: >
+          Daily Summary ({{ now().strftime('%Y-%m-%d') }}):
+
+          🐕 Total bark events: {{ states('sensor.total_barks_today') }}
+          ⏱️ Total barking time: {{ states('sensor.barking_time_today') }}
+          📈 Max decibels: {{ states('sensor.max_decibels_today') }} dB
+          🔇 Barking percentage: {{ (states('sensor.barking_percentage_today') | float * 100) | round(1) }}%
+
+          🐦 Bird species detected: {{ states('sensor.bird_species_today') }}
+          🐦 Total bird detections: {{ states('sensor.bird_detections_today') }}
+
+# Generate weekly summary (every Sunday)
+- id: 'weekly_summary_report'
+  alias: "Weekly Summary Report"
+  description: "Generate weekly summary every Sunday evening"
+  trigger:
+    - platform: time
+      at: "20:00:00"
+  condition:
+    - condition: time
+      weekday:
+        - sun
+  action:
+    - service: shell_command.generate_weekly_report
+      data: {}
+
+    - service: persistent_notification.create
+      data:
+        title: "📊 Weekly Report Generated"
+        message: >
+          Weekly report has been generated and saved to CSV exports folder.
+          Check ~/audio_detection/csv_exports/ for detailed data.
+        notification_id: "weekly_report"
+
+# ============================================================================
+# SYSTEM MONITORING
+# ============================================================================
+
+# Alert if detector goes offline
+- id: 'detector_offline_alert'
+  alias: "Alert: Detector Offline"
+  description: "Notify if audio detector stops responding"
+  trigger:
+    - platform: state
+      entity_id: sensor.audio_detector_status
+      to: 'offline'
+      for:
+        minutes: 5
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ Audio Detector Offline"
+        message: >
+          The audio detection system has been offline for 5 minutes.
+          Please check the Raspberry Pi and restart the service if needed.
+        notification_id: "detector_offline"
+
+# Alert when detector comes back online
+- id: 'detector_online_notification'
+  alias: "Notify: Detector Online"
+  description: "Notify when detector reconnects"
+  trigger:
+    - platform: state
+      entity_id: sensor.audio_detector_status
+      to: 'online'
+  condition:
+    - condition: template
+      value_template: >
+        {{ trigger.from_state.state == 'offline' }}
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "✅ Audio Detector Online"
+        message: >
+          Audio detection system has reconnected and is operating normally.
+        notification_id: "detector_online"
+
+# ============================================================================
+# CSV EXPORT AUTOMATION
+# ============================================================================
+
+# Export CSV daily at midnight
+- id: 'daily_csv_export'
+  alias: "Daily CSV Export"
+  description: "Export detection data to CSV files daily"
+  trigger:
+    - platform: time
+      at: "00:01:00"
+  action:
+    - service: shell_command.export_csv_daily
+      data: {}
+
+    - service: persistent_notification.create
+      data:
+        title: "💾 CSV Export Complete"
+        message: >
+          Daily CSV export completed.
+          Files saved to ~/audio_detection/csv_exports/
+        notification_id: "csv_export_daily"
+
+# ============================================================================
+# STORAGE MONITORING
+# ============================================================================
+
+# Alert if audio storage is getting full
+- id: 'storage_full_alert'
+  alias: "Alert: Audio Storage Low"
+  description: "Warn when audio storage exceeds 80% capacity"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.disk_use_percent_mnt_usb
+      above: 80
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ Audio Storage Low"
+        message: >
+          Audio storage is {{ states('sensor.disk_use_percent_mnt_usb') }}% full.
+          Consider backing up and deleting old recordings.
+        notification_id: "storage_low"
+
+# ============================================================================
+# SHELL COMMANDS
+# ============================================================================
+
+shell_command:
+  # Export CSV files
+  export_csv_daily: >
+    /home/pi/audio_detection/venv/bin/python3
+    /home/user/Air-quality-sensors/scripts/csv_exporter.py --all
+
+  # Generate weekly report
+  generate_weekly_report: >
+    /home/pi/audio_detection/venv/bin/python3
+    /home/user/Air-quality-sensors/scripts/csv_exporter.py --weekly
+
+  # Restart bark detector
+  restart_bark_detector: >
+    sudo systemctl restart dog_bark_detector
+
+  # Restart BirdNET
+  restart_birdnet: >
+    sudo systemctl restart birdnet
+
+# ============================================================================
+# NOTIFY PLATFORMS
+# ============================================================================
+
+notify:
+  # File logger for events
+  - name: file_logger
+    platform: file
+    filename: /home/pi/audio_detection/logs/events.log
+    timestamp: true

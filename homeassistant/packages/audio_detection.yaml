@@ -1,0 +1,332 @@
+---
+# Audio Detection Package
+# =======================
+# Dog Bark and Bird Detection Sensors for Home Assistant
+#
+# This package includes:
+# - Dog bark detection sensors
+# - Bird detection sensors
+# - Decibel monitoring
+# - Statistics and counters
+# - Binary sensors for alerts
+
+# ============================================================================
+# MQTT SENSORS - Dog Bark Detection
+# ============================================================================
+
+mqtt:
+  sensor:
+    # Current Decibel Level
+    - name: "Audio Decibels"
+      unique_id: audio_decibels
+      state_topic: "audio/decibels"
+      value_template: "{{ value_json.decibels | round(1) }}"
+      unit_of_measurement: "dB"
+      icon: mdi:volume-high
+      device_class: sound_pressure
+
+    # Dog Bark Confidence
+    - name: "Dog Bark Confidence"
+      unique_id: dog_bark_confidence
+      state_topic: "audio/dog_bark"
+      value_template: "{{ (value_json.confidence * 100) | round(0) }}"
+      unit_of_measurement: "%"
+      icon: mdi:dog-side
+
+    # Dog Bark Class Name
+    - name: "Dog Bark Class"
+      unique_id: dog_bark_class
+      state_topic: "audio/dog_bark"
+      value_template: "{{ value_json.class }}"
+      icon: mdi:tag
+
+    # Detector Status
+    - name: "Audio Detector Status"
+      unique_id: audio_detector_status
+      state_topic: "audio/detector_status"
+      value_template: "{{ value_json.status }}"
+      icon: mdi:radio-tower
+
+    # Daily Bark Count
+    - name: "Total Barks Today"
+      unique_id: total_barks_today
+      state_topic: "audio/bark_stats"
+      value_template: "{{ value_json.total_barks | int }}"
+      icon: mdi:counter
+
+    # Max Decibels Today
+    - name: "Max Decibels Today"
+      unique_id: max_decibels_today
+      state_topic: "audio/bark_stats"
+      value_template: "{{ value_json.max_decibels | round(1) }}"
+      unit_of_measurement: "dB"
+      icon: mdi:volume-high
+
+  binary_sensor:
+    # Dog Barking Status (Binary)
+    - name: "Dog Barking"
+      unique_id: dog_barking
+      state_topic: "audio/dog_bark"
+      value_template: "{{ value_json.detected }}"
+      payload_on: true
+      payload_off: false
+      device_class: sound
+      icon: mdi:dog
+
+# ============================================================================
+# MQTT SENSORS - Bird Detection (from BirdNET-Pi)
+# ============================================================================
+
+    # Most Recent Bird Detection
+    - name: "Latest Bird Species"
+      unique_id: latest_bird_species
+      state_topic: "birdnet/detection"
+      value_template: "{{ value_json.common_name }}"
+      icon: mdi:bird
+
+    # Bird Detection Confidence
+    - name: "Bird Confidence"
+      unique_id: bird_confidence
+      state_topic: "birdnet/detection"
+      value_template: "{{ (value_json.confidence * 100) | round(0) }}"
+      unit_of_measurement: "%"
+      icon: mdi:bird
+
+    # Bird Scientific Name
+    - name: "Bird Scientific Name"
+      unique_id: bird_scientific_name
+      state_topic: "birdnet/detection"
+      value_template: "{{ value_json.scientific_name }}"
+      icon: mdi:book-open-variant
+
+    # Daily Bird Species Count
+    - name: "Bird Species Today"
+      unique_id: bird_species_today
+      state_topic: "birdnet/stats"
+      value_template: "{{ value_json.species_count | int }}"
+      icon: mdi:format-list-numbered
+
+    # Total Bird Detections Today
+    - name: "Bird Detections Today"
+      unique_id: bird_detections_today
+      state_topic: "birdnet/stats"
+      value_template: "{{ value_json.total_detections | int }}"
+      icon: mdi:counter
+
+# ============================================================================
+# TEMPLATE SENSORS
+# ============================================================================
+
+sensor:
+  # Bark Duration Calculator (minutes of barking per hour)
+  - platform: template
+    sensors:
+      bark_minutes_per_hour:
+        friendly_name: "Barking Minutes Per Hour"
+        unit_of_measurement: "min/hr"
+        icon_template: mdi:clock-outline
+        value_template: >
+          {% set total_barks = states('sensor.total_barks_today') | int %}
+          {% set hours_today = now().hour + 1 %}
+          {% if hours_today > 0 and total_barks > 0 %}
+            {{ ((total_barks * 2) / hours_today) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+
+      # Decibel Status (Color Coded)
+      decibel_status:
+        friendly_name: "Decibel Level Status"
+        icon_template: mdi:volume-high
+        value_template: >
+          {% set db = states('sensor.audio_decibels') | float %}
+          {% if db < 50 %}
+            Quiet
+          {% elif db < 70 %}
+            Moderate
+          {% elif db < 90 %}
+            Loud
+          {% else %}
+            Very Loud
+          {% endif %}
+
+      # Bark Event Status (for dashboard display)
+      bark_event_status:
+        friendly_name: "Bark Status"
+        icon_template: >
+          {% if is_state('binary_sensor.dog_barking', 'on') %}
+            mdi:dog
+          {% else %}
+            mdi:dog-side
+          {% endif %}
+        value_template: >
+          {% if is_state('binary_sensor.dog_barking', 'on') %}
+            🔴 BARKING NOW
+          {% else %}
+            ✅ Quiet
+          {% endif %}
+
+      # Current Quiet Streak (time since last bark)
+      quiet_streak:
+        friendly_name: "Current Quiet Streak"
+        icon_template: mdi:timer-outline
+        value_template: >
+          {% set last_bark = as_timestamp(states.binary_sensor.dog_barking.last_changed) %}
+          {% set now = as_timestamp(now()) %}
+          {% if last_bark %}
+            {% set diff = (now - last_bark) | int %}
+            {% set hours = (diff // 3600) %}
+            {% set minutes = ((diff % 3600) // 60) %}
+            {% if hours > 0 %}
+              {{ hours }}h {{ minutes }}m
+            {% else %}
+              {{ minutes }}m
+            {% endif %}
+          {% else %}
+            Unknown
+          {% endif %}
+
+# ============================================================================
+# HISTORY STATS - Track Total Barking Time
+# ============================================================================
+
+  - platform: history_stats
+    name: "Barking Time Today"
+    entity_id: binary_sensor.dog_barking
+    state: 'on'
+    type: time
+    start: '{{ now().replace(hour=0, minute=0, second=0) }}'
+    end: '{{ now() }}'
+
+  - platform: history_stats
+    name: "Barking Time Last Hour"
+    entity_id: binary_sensor.dog_barking
+    state: 'on'
+    type: time
+    start: '{{ now() - timedelta(hours=1) }}'
+    end: '{{ now() }}'
+
+  - platform: history_stats
+    name: "Barking Percentage Today"
+    entity_id: binary_sensor.dog_barking
+    state: 'on'
+    type: ratio
+    start: '{{ now().replace(hour=0, minute=0, second=0) }}'
+    end: '{{ now() }}'
+
+# ============================================================================
+# COUNTERS
+# ============================================================================
+
+counter:
+  # Bird species diversity counter (unique species today)
+  bird_species_diversity:
+    name: Bird Species Diversity
+    icon: mdi:bird
+    initial: 0
+    step: 1
+
+# ============================================================================
+# INPUT HELPERS
+# ============================================================================
+
+input_boolean:
+  # Enable/disable bark notifications
+  bark_notifications:
+    name: Bark Notifications
+    icon: mdi:bell-ring
+
+  # Enable/disable bird notifications
+  bird_notifications:
+    name: Bird Notifications
+    icon: mdi:bell-ring
+
+input_number:
+  # Bark detection sensitivity threshold
+  bark_sensitivity:
+    name: Bark Detection Sensitivity
+    min: 0.5
+    max: 0.95
+    step: 0.05
+    initial: 0.70
+    mode: slider
+    icon: mdi:tune
+
+  # Bird detection sensitivity threshold
+  bird_sensitivity:
+    name: Bird Detection Sensitivity
+    min: 0.5
+    max: 0.95
+    step: 0.05
+    initial: 0.70
+    mode: slider
+    icon: mdi:tune
+
+# ============================================================================
+# GROUPS
+# ============================================================================
+
+group:
+  dog_bark_sensors:
+    name: Dog Bark Detection
+    icon: mdi:dog
+    entities:
+      - binary_sensor.dog_barking
+      - sensor.dog_bark_confidence
+      - sensor.dog_bark_class
+      - sensor.audio_decibels
+      - sensor.total_barks_today
+      - sensor.max_decibels_today
+      - sensor.barking_time_today
+      - sensor.bark_event_status
+      - sensor.quiet_streak
+
+  bird_detection_sensors:
+    name: Bird Detection
+    icon: mdi:bird
+    entities:
+      - sensor.latest_bird_species
+      - sensor.bird_confidence
+      - sensor.bird_scientific_name
+      - sensor.bird_species_today
+      - sensor.bird_detections_today
+
+  audio_settings:
+    name: Audio Detection Settings
+    icon: mdi:cog
+    entities:
+      - input_boolean.bark_notifications
+      - input_boolean.bird_notifications
+      - input_number.bark_sensitivity
+      - input_number.bird_sensitivity
+
+# ============================================================================
+# CUSTOMIZE
+# ============================================================================
+
+homeassistant:
+  customize:
+    # Dog Bark Sensors
+    binary_sensor.dog_barking:
+      friendly_name: "Dog Barking"
+      icon: mdi:dog
+
+    sensor.audio_decibels:
+      friendly_name: "Current Sound Level"
+
+    sensor.total_barks_today:
+      friendly_name: "Bark Events Today"
+
+    # Bird Detection Sensors
+    sensor.latest_bird_species:
+      friendly_name: "Most Recent Bird"
+
+    sensor.bird_species_today:
+      friendly_name: "Unique Species Today"
+
+    # Status Sensors
+    sensor.bark_event_status:
+      friendly_name: "Current Status"
+
+    sensor.quiet_streak:
+      friendly_name: "Quiet Period"
