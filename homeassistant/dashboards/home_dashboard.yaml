@@ -22,12 +22,12 @@ views:
               columns: full
               rows: 3
 
-          # Dual CO2 Gauges (Aranet4 + SCD30)
+          # Dual CO2 Gauges (Two Aranet4 sensors)
           - type: horizontal-stack
             cards:
               - type: gauge
                 entity: sensor.aranet4_22012_carbon_dioxide
-                name: CO2 (Aranet4)
+                name: CO2 - Main
                 min: 400
                 max: 3000
                 needle: false
@@ -36,8 +36,8 @@ views:
                   yellow: 800
                   red: 1000
               - type: gauge
-                entity: sensor.air_quality_co2
-                name: CO2 (SCD30)
+                entity: sensor.aranet4_507340202839_carbon_dioxide
+                name: CO2 - Attic
                 min: 400
                 max: 3000
                 needle: false
@@ -46,20 +46,36 @@ views:
                   yellow: 800
                   red: 1000
 
-          # Aranet4 Environmental Readings
+          # Aranet4 Main Environmental Readings
           - type: horizontal-stack
             cards:
               - type: entity
                 entity: sensor.aranet4_22012_temperature
-                name: Temperature
+                name: Temp (Main)
                 icon: mdi:thermometer
               - type: entity
                 entity: sensor.aranet4_22012_humidity
-                name: Humidity
+                name: Humidity (Main)
                 icon: mdi:water-percent
               - type: entity
                 entity: sensor.aranet4_22012_pressure
-                name: Pressure
+                name: Pressure (Main)
+                icon: mdi:gauge
+
+          # Aranet4 Attic Environmental Readings
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.aranet4_507340202839_temperature
+                name: Temp (Attic)
+                icon: mdi:thermometer
+              - type: entity
+                entity: sensor.aranet4_507340202839_humidity
+                name: Humidity (Attic)
+                icon: mdi:water-percent
+              - type: entity
+                entity: sensor.aranet4_507340202839_pressure
+                name: Pressure (Attic)
                 icon: mdi:gauge
 
           # Dual CO2 Graphs
@@ -70,13 +86,13 @@ views:
                 entity: sensor.aranet4_22012_carbon_dioxide
                 detail: 1
                 hours_to_show: 72
-                name: CO2 (Aranet4)
+                name: CO2 (Main)
               - graph: line
                 type: sensor
-                entity: sensor.air_quality_co2
+                entity: sensor.aranet4_507340202839_carbon_dioxide
                 detail: 1
                 hours_to_show: 72
-                name: CO2 (SCD30)
+                name: CO2 (Attic)
             grid_options:
               columns: 12
               rows: 2
