@@ -74,7 +74,6 @@ install_dependencies() {
         alsa-utils \
         sqlite3 \
         portaudio19-dev \
-        libatlas-base-dev \
         libopenblas-dev \
         libhdf5-dev \
         libc-ares-dev \
