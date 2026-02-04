@@ -6,7 +6,8 @@
 #
 # Services created:
 # - dog_bark_detector.service (dog bark detection)
-# - audio_csv_export.timer (daily CSV export)
+# - audio_csv_export.timer (hourly CSV export)
+# - iphone-audio-stream.service (created separately - RTSP to ALSA loopback)
 #
 # Author: Claude Code
 # License: MIT
@@ -53,7 +54,7 @@ EOF
 echo -e "${GREEN}✓ dog_bark_detector.service created${NC}"
 
 ###############################################################################
-# CSV Export Timer (Daily)
+# CSV Export Timer (Hourly)
 ###############################################################################
 
 echo -e "${YELLOW}Creating CSV export timer...${NC}"
@@ -72,22 +73,22 @@ StandardOutput=journal
 StandardError=journal
 EOF
 
-# Create the timer
+# Create the timer (runs every hour)
 sudo tee /etc/systemd/system/audio_csv_export.timer > /dev/null << 'EOF'
 [Unit]
-Description=Daily CSV Export Timer
+Description=Hourly CSV Export Timer
 Requires=audio_csv_export.service
 
 [Timer]
-OnCalendar=daily
-OnCalendar=00:01:00
+# Run every hour at the top of the hour
+OnCalendar=hourly
 Persistent=true
 
 [Install]
 WantedBy=timers.target
 EOF
 
-echo -e "${GREEN}✓ CSV export timer created${NC}"
+echo -e "${GREEN}✓ CSV export timer created (runs hourly)${NC}"
 
 ###############################################################################
 # Enable and Start Services

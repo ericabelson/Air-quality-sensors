@@ -62,6 +62,32 @@ mqtt:
       unit_of_measurement: "dB"
       icon: mdi:volume-high
 
+    # Last Detection (updated every minute)
+    - name: "Last Bark Detection"
+      unique_id: last_bark_detection
+      state_topic: "audio/last_detection"
+      value_template: "{{ value_json.status }}"
+      icon: mdi:dog-side
+      json_attributes_topic: "audio/last_detection"
+      json_attributes_template: "{{ value_json | tojson }}"
+
+    # Seconds Since Last Bark
+    - name: "Seconds Since Last Bark"
+      unique_id: seconds_since_last_bark
+      state_topic: "audio/last_detection"
+      value_template: "{{ value_json.seconds_ago if value_json.seconds_ago else 0 }}"
+      unit_of_measurement: "s"
+      icon: mdi:timer-outline
+
+    # Microphone Status
+    - name: "Microphone Status"
+      unique_id: microphone_status
+      state_topic: "audio/microphone_status"
+      value_template: "{{ value_json.status }}"
+      icon: mdi:microphone
+      json_attributes_topic: "audio/microphone_status"
+      json_attributes_template: "{{ value_json | tojson }}"
+
   binary_sensor:
     # Dog Barking Status (Binary)
     - name: "Dog Barking"
@@ -72,6 +98,16 @@ mqtt:
       payload_off: false
       device_class: sound
       icon: mdi:dog
+
+    # Microphone Online (Binary)
+    - name: "Microphone Online"
+      unique_id: microphone_online
+      state_topic: "audio/microphone_status"
+      value_template: "{{ value_json.status == 'online' }}"
+      payload_on: true
+      payload_off: false
+      device_class: connectivity
+      icon: mdi:microphone
 
 # ============================================================================
 # MQTT SENSORS - Bird Detection (from BirdNET-Pi)

@@ -92,6 +92,8 @@ MQTT_TOPIC_BARK = "audio/dog_bark"
 MQTT_TOPIC_DECIBELS = "audio/decibels"
 MQTT_TOPIC_STATUS = "audio/detector_status"
 MQTT_TOPIC_STATS = "audio/bark_stats"
+MQTT_TOPIC_LAST_DETECTION = "audio/last_detection"
+MQTT_TOPIC_MIC_STATUS = "audio/microphone_status"
 
 # File Paths
 BASE_DIR = os.path.expanduser("~/audio_detection")
@@ -100,6 +102,10 @@ LABELS_PATH = os.path.join(BASE_DIR, "models", "yamnet_class_map.csv")
 RECORDING_DIR = "/mnt/usb/bark_audio/recordings"
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 DATA_DIR = os.path.join(BASE_DIR, "data")
+
+# Storage Management
+MAX_STORAGE_PERCENT = 95  # Use up to 95% of 1TB before cleanup
+AUDIO_QUALITY = "32k"  # Very low quality MP3 for minimal size
 
 # Create directories if they don't exist
 for directory in [LOG_DIR, DATA_DIR, RECORDING_DIR]:
@@ -332,6 +338,58 @@ class AudioRecorder:
         self.is_recording = False
         self.recording_buffer = []
         self.recording_start_time = None
+        self.last_cleanup_check = datetime.now()
+
+    def check_storage_and_cleanup(self):
+        """Check storage usage and delete oldest files if over threshold"""
+        # Only check every 10 minutes to reduce disk I/O
+        if (datetime.now() - self.last_cleanup_check).total_seconds() < 600:
+            return
+
+        self.last_cleanup_check = datetime.now()
+
+        try:
+            import shutil
+
+            # Get storage stats for the mount point
+            stats = shutil.disk_usage(self.recording_dir)
+            usage_percent = (stats.used / stats.total) * 100
+
+            if usage_percent > MAX_STORAGE_PERCENT:
+                logger.warning(f"Storage at {usage_percent:.1f}% - cleaning up old recordings")
+
+                # Get all MP3 files with their modification times
+                files = []
+                for root, dirs, filenames in os.walk(self.recording_dir):
+                    for filename in filenames:
+                        if filename.endswith('.mp3'):
+                            filepath = os.path.join(root, filename)
+                            mtime = os.path.getmtime(filepath)
+                            size = os.path.getsize(filepath)
+                            files.append((filepath, mtime, size))
+
+                # Sort by modification time (oldest first)
+                files.sort(key=lambda x: x[1])
+
+                # Delete oldest files until we're under 90% usage
+                bytes_to_free = stats.total * 0.05  # Free up 5% of space
+                bytes_freed = 0
+                files_deleted = 0
+
+                for filepath, mtime, size in files:
+                    if bytes_freed >= bytes_to_free:
+                        break
+                    try:
+                        os.remove(filepath)
+                        bytes_freed += size
+                        files_deleted += 1
+                    except Exception as e:
+                        logger.error(f"Error deleting {filepath}: {e}")
+
+                logger.info(f"Cleanup complete: deleted {files_deleted} files, freed {bytes_freed / 1024 / 1024:.1f} MB")
+
+        except Exception as e:
+            logger.error(f"Error during storage cleanup: {e}")
 
     def start_recording(self):
         """Start recording audio"""
@@ -370,15 +428,19 @@ class AudioRecorder:
             wav_file = os.path.join(date_path, f"bark_{timestamp_str}.wav")
             wavfile.write(wav_file, SAMPLE_RATE, full_audio.astype(np.int16))
 
-            # Convert to MP3 for compression
+            # Convert to MP3 with lowest quality for minimal size
             mp3_file = wav_file.replace('.wav', '.mp3')
             audio_segment = AudioSegment.from_wav(wav_file)
-            audio_segment.export(mp3_file, format='mp3', bitrate='256k')
+            audio_segment.export(mp3_file, format='mp3', bitrate='32k')  # Lowest quality, smallest size
 
             # Remove WAV file to save space
             os.remove(wav_file)
 
             logger.info(f"Saved bark recording: {mp3_file}")
+
+            # Check storage and cleanup if needed
+            self.check_storage_and_cleanup()
+
             return mp3_file
 
         except Exception as e:
@@ -457,6 +519,36 @@ class MQTTPublisher:
         """Publish daily statistics"""
         self.publish(MQTT_TOPIC_STATS, stats)
 
+    def publish_last_detection(self, last_bark_time, confidence, decibels):
+        """Publish last detection info (updated every minute for dashboard)"""
+        if last_bark_time:
+            time_ago_seconds = (datetime.now() - last_bark_time).total_seconds()
+            payload = {
+                'last_bark': last_bark_time.isoformat(),
+                'seconds_ago': int(time_ago_seconds),
+                'confidence': float(confidence),
+                'decibels': float(decibels),
+                'status': 'recent' if time_ago_seconds < 300 else 'quiet'  # Recent if within 5 min
+            }
+        else:
+            payload = {
+                'last_bark': None,
+                'seconds_ago': None,
+                'confidence': 0,
+                'decibels': 0,
+                'status': 'no_data'
+            }
+        self.publish(MQTT_TOPIC_LAST_DETECTION, payload)
+
+    def publish_mic_status(self, status, details=None):
+        """Publish microphone/audio input status"""
+        payload = {
+            'status': status,  # 'online', 'offline', 'no_data', 'error'
+            'timestamp': datetime.now().isoformat(),
+            'details': details or ''
+        }
+        self.publish(MQTT_TOPIC_MIC_STATUS, payload)
+
 # ============================================================================
 # MAIN DETECTOR
 # ============================================================================
@@ -479,6 +571,14 @@ class DogBarkDetector:
         self.current_group_5min = None
         self.current_group_10min = None
         self.last_bark_time = None
+        self.last_bark_confidence = 0
+        self.last_bark_decibels = 0
+
+        # Microphone health monitoring
+        self.last_audio_received = datetime.now()
+        self.last_mqtt_update = datetime.now()
+        self.consecutive_read_errors = 0
+        self.mic_status = 'starting'
 
         # Statistics
         self.daily_stats = {
@@ -537,12 +637,40 @@ class DogBarkDetector:
                 audio_bytes = self.stream.read(CHUNK_SIZE, exception_on_overflow=False)
                 audio_data = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
 
+                # Mark that we received audio successfully
+                self.last_audio_received = datetime.now()
+                self.consecutive_read_errors = 0
+
+                # Update mic status if it was offline
+                if self.mic_status != 'online':
+                    self.mic_status = 'online'
+                    self.mqtt.publish_mic_status('online', 'Audio stream restored')
+                    logger.info("Microphone back online")
+
                 # Calculate decibels
                 decibels = calculate_decibels(audio_data)
 
                 # Publish decibels (throttled to every second)
                 if int(time.time()) % 1 == 0:
                     self.mqtt.publish_decibels(decibels)
+
+                # Check microphone health (every 30 seconds)
+                time_since_audio = (datetime.now() - self.last_audio_received).total_seconds()
+                if time_since_audio > 30:
+                    if self.mic_status != 'no_data':
+                        self.mic_status = 'no_data'
+                        self.mqtt.publish_mic_status('no_data', f'No audio for {int(time_since_audio)}s')
+                        logger.error(f"Microphone offline - no audio data for {int(time_since_audio)} seconds")
+
+                # Publish last_detection update every minute
+                time_since_update = (datetime.now() - self.last_mqtt_update).total_seconds()
+                if time_since_update >= 60:
+                    self.mqtt.publish_last_detection(
+                        self.last_bark_time,
+                        self.last_bark_confidence,
+                        self.last_bark_decibels
+                    )
+                    self.last_mqtt_update = datetime.now()
 
                 # Classify audio
                 predictions = self.classifier.classify_audio(audio_data)
@@ -557,8 +685,13 @@ class DogBarkDetector:
 
                     logger.info(f"🐕 DOG BARK DETECTED - Confidence: {confidence:.2f} - Decibels: {decibels:.1f}dB - Class: {class_name}")
 
-                    # Publish to MQTT
+                    # Publish to MQTT (real-time)
                     self.mqtt.publish_bark_event(event, True, class_name)
+
+                    # Update last detection info for minute-based sensor
+                    self.last_bark_time = datetime.now()
+                    self.last_bark_confidence = confidence
+                    self.last_bark_decibels = decibels
 
                     # Update statistics
                     self._update_statistics(event)
@@ -569,8 +702,6 @@ class DogBarkDetector:
                     # Record audio
                     if not self.recorder.is_recording:
                         self.recorder.start_recording()
-
-                    self.last_bark_time = datetime.now()
 
                 # Add to recording buffer if recording
                 if self.recorder.is_recording:
@@ -584,6 +715,19 @@ class DogBarkDetector:
 
                 # Small delay to reduce CPU usage
                 time.sleep(0.01)
+
+            except IOError as e:
+                # Audio read error (common with ALSA loopback if stream disconnects)
+                self.consecutive_read_errors += 1
+                logger.warning(f"Audio read error #{self.consecutive_read_errors}: {e}")
+
+                if self.consecutive_read_errors > 10:
+                    if self.mic_status != 'error':
+                        self.mic_status = 'error'
+                        self.mqtt.publish_mic_status('error', f'Consecutive read errors: {self.consecutive_read_errors}')
+                        logger.error("Too many audio read errors - microphone may be offline")
+
+                time.sleep(1)
 
             except Exception as e:
                 logger.error(f"Error in detection loop: {e}")
