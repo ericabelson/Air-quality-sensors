@@ -1,0 +1,497 @@
+---
+# Audio Detection Dashboard
+# ==========================
+# Beautiful dashboard for dog bark and bird detection monitoring
+#
+# Features:
+# - Real-time bark status
+# - 24-hour bark timeline
+# - Decibel meter
+# - Daily statistics
+# - Bird species display
+# - Interactive charts
+
+title: Audio Detection
+icon: mdi:ear-hearing
+views:
+  # ============================================================================
+  # MAIN OVERVIEW
+  # ============================================================================
+  - title: Overview
+    path: overview
+    icon: mdi:view-dashboard
+    cards:
+      # ========== DOG BARKING STATUS ==========
+      - type: vertical-stack
+        cards:
+          # Big status card
+          - type: markdown
+            content: >
+              # {{ states('sensor.bark_event_status') }}
+
+              {% if is_state('binary_sensor.dog_barking', 'on') %}
+              ## 🔊 Currently Barking
+              Confidence: **{{ states('sensor.dog_bark_confidence') }}%**
+
+              Decibels: **{{ states('sensor.audio_decibels') }} dB**
+
+              Type: {{ states('sensor.dog_bark_class') }}
+              {% else %}
+              ## 🔇 All Quiet
+              Quiet for: **{{ states('sensor.quiet_streak') }}**
+              {% endif %}
+            card_mod:
+              style: |
+                ha-card {
+                  background: {% if is_state('binary_sensor.dog_barking', 'on') %}#ff4444{% else %}#44ff44{% endif %};
+                  color: white;
+                  font-weight: bold;
+                  text-align: center;
+                  padding: 20px;
+                }
+
+          # Current decibel gauge
+          - type: gauge
+            entity: sensor.audio_decibels
+            name: Current Sound Level
+            min: 0
+            max: 120
+            needle: true
+            severity:
+              green: 0
+              yellow: 60
+              orange: 75
+              red: 90
+            unit: dB
+
+      # ========== DAILY STATISTICS ==========
+      - type: horizontal-stack
+        cards:
+          - type: statistic
+            entity: sensor.total_barks_today
+            name: Bark Events Today
+            icon: mdi:dog
+            period:
+              calendar:
+                period: day
+
+          - type: statistic
+            entity: sensor.barking_time_today
+            name: Total Time Barking
+            icon: mdi:clock-outline
+            period:
+              calendar:
+                period: day
+
+          - type: statistic
+            entity: sensor.max_decibels_today
+            name: Max Decibels
+            icon: mdi:volume-high
+            period:
+              calendar:
+                period: day
+
+      # ========== 24-HOUR BARK TIMELINE ==========
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: 24-Hour Barking Timeline
+          show_states: true
+        graph_span: 24h
+        span:
+          start: day
+        series:
+          - entity: binary_sensor.dog_barking
+            name: Barking
+            type: column
+            color: '#ff4444'
+            opacity: 0.8
+            show:
+              legend_value: false
+            data_generator: |
+              return entity.attributes.history.map((entry) => {
+                return [new Date(entry.last_changed), entry.state === 'on' ? 1 : 0];
+              });
+
+      # ========== BARKING MINUTES PER HOUR ==========
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.bark_minutes_per_hour
+            name: Avg Minutes Per Hour
+            min: 0
+            max: 60
+            needle: true
+            severity:
+              green: 0
+              yellow: 10
+              orange: 20
+              red: 30
+
+          - type: gauge
+            entity: sensor.barking_percentage_today
+            name: Barking % Today
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              green: 0
+              yellow: 10
+              orange: 25
+              red: 50
+
+      # ========== HOURLY BARK DISTRIBUTION ==========
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Barking by Hour of Day
+        graph_span: 7d
+        span:
+          start: day
+          offset: -7d
+        series:
+          - entity: sensor.barking_time_last_hour
+            name: Minutes Barking
+            type: column
+            color: '#ff6600'
+            group_by:
+              func: avg
+              duration: 1h
+
+  # ============================================================================
+  # BIRD DETECTION VIEW
+  # ============================================================================
+  - title: Birds
+    path: birds
+    icon: mdi:bird
+    cards:
+      # ========== LATEST BIRD DETECTION ==========
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: >
+              # 🐦 Latest Bird Detection
+
+              ## {{ states('sensor.latest_bird_species') }}
+
+              *{{ states('sensor.bird_scientific_name') }}*
+
+              Confidence: **{{ states('sensor.bird_confidence') }}%**
+
+              Detected: {{ relative_time(states.sensor.latest_bird_species.last_changed) }} ago
+            card_mod:
+              style: |
+                ha-card {
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  padding: 20px;
+                  text-align: center;
+                }
+
+      # ========== DAILY BIRD STATISTICS ==========
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.bird_species_today
+            name: Unique Species Today
+            icon: mdi:bird
+
+          - type: entity
+            entity: sensor.bird_detections_today
+            name: Total Detections
+            icon: mdi:counter
+
+      # ========== BIRD SPECIES LIST (Last 2 Hours) ==========
+      - type: markdown
+        title: Recent Bird Species (Last 2 Hours)
+        content: >
+          {% set birds = namespace(list=[]) %}
+          {% for state in states.sensor %}
+            {% if 'bird_' in state.entity_id and state.last_changed > now() - timedelta(hours=2) %}
+              {% set birds.list = birds.list + [state.attributes.friendly_name] %}
+            {% endif %}
+          {% endfor %}
+
+          {% if birds.list|length > 0 %}
+            {% for bird in birds.list | unique | sort %}
+          - 🐦 {{ bird }}
+            {% endfor %}
+          {% else %}
+          No birds detected in the last 2 hours.
+          {% endif %}
+
+      # ========== BIRD DETECTION TIMELINE ==========
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Bird Detections Over Time (7 Days)
+        graph_span: 7d
+        span:
+          start: day
+          offset: -7d
+        series:
+          - entity: sensor.bird_detections_today
+            name: Detections
+            type: column
+            color: '#44aa44'
+            group_by:
+              func: sum
+              duration: 1d
+
+      # ========== BIRD SPECIES DIVERSITY ==========
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Species Diversity (7 Days)
+        graph_span: 7d
+        span:
+          start: day
+          offset: -7d
+        series:
+          - entity: sensor.bird_species_today
+            name: Unique Species
+            type: area
+            color: '#6699ff'
+            opacity: 0.6
+            group_by:
+              func: max
+              duration: 1d
+
+  # ============================================================================
+  # DETAILED STATISTICS VIEW
+  # ============================================================================
+  - title: Statistics
+    path: statistics
+    icon: mdi:chart-box
+    cards:
+      # ========== WEEKLY BARK SUMMARY ==========
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Weekly Barking Summary
+        graph_span: 7d
+        span:
+          start: day
+          offset: -7d
+        series:
+          - entity: sensor.total_barks_today
+            name: Total Barks
+            type: column
+            color: '#ff4444'
+            group_by:
+              func: max
+              duration: 1d
+
+          - entity: sensor.max_decibels_today
+            name: Max Decibels
+            type: line
+            color: '#ffaa00'
+            curve: smooth
+            group_by:
+              func: max
+              duration: 1d
+
+      # ========== DECIBEL HISTORY ==========
+      - type: history-graph
+        title: Decibel History (24 Hours)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.audio_decibels
+            name: Decibels
+
+      # ========== BARK DURATION DISTRIBUTION ==========
+      - type: markdown
+        title: Barking Patterns
+        content: >
+          ## Daily Averages
+
+          - **Bark Events:** {{ states('sensor.total_barks_today') }} events
+          - **Total Duration:** {{ states('sensor.barking_time_today') }}
+          - **Average Event Length:** {{ (states('sensor.barking_time_today')|float / states('sensor.total_barks_today')|float)|round(1) }} minutes
+          - **Barking Percentage:** {{ (states('sensor.barking_percentage_today')|float * 100)|round(1) }}%
+
+          ## Peak Activity
+
+          Most active hour: *Coming soon - analyzing data...*
+
+          Quietest hour: *Coming soon - analyzing data...*
+
+      # ========== BIRD VS BARK COMPARISON ==========
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Birds vs Barks (7 Days)
+        graph_span: 7d
+        span:
+          start: day
+          offset: -7d
+        series:
+          - entity: sensor.total_barks_today
+            name: Dog Barks
+            type: column
+            color: '#ff4444'
+            group_by:
+              func: max
+              duration: 1d
+
+          - entity: sensor.bird_detections_today
+            name: Bird Detections
+            type: column
+            color: '#44aa44'
+            group_by:
+              func: max
+              duration: 1d
+
+  # ============================================================================
+  # SETTINGS VIEW
+  # ============================================================================
+  - title: Settings
+    path: settings
+    icon: mdi:cog
+    cards:
+      # ========== SYSTEM STATUS ==========
+      - type: entities
+        title: System Status
+        show_header_toggle: false
+        entities:
+          - entity: sensor.audio_detector_status
+            name: Detector Status
+            icon: mdi:radio-tower
+
+      # ========== NOTIFICATION SETTINGS ==========
+      - type: entities
+        title: Notification Settings
+        show_header_toggle: false
+        entities:
+          - entity: input_boolean.bark_notifications
+            name: Bark Alerts
+          - entity: input_boolean.bird_notifications
+            name: Bird Alerts
+
+      # ========== DETECTION SENSITIVITY ==========
+      - type: entities
+        title: Detection Sensitivity
+        show_header_toggle: false
+        entities:
+          - entity: input_number.bark_sensitivity
+            name: Bark Threshold
+          - entity: input_number.bird_sensitivity
+            name: Bird Threshold
+
+      # ========== SYSTEM CONTROLS ==========
+      - type: entities
+        title: System Controls
+        show_header_toggle: false
+        entities:
+          - type: button
+            name: Export CSV Now
+            icon: mdi:file-export
+            tap_action:
+              action: call-service
+              service: shell_command.export_csv_daily
+
+          - type: button
+            name: Generate Weekly Report
+            icon: mdi:file-chart
+            tap_action:
+              action: call-service
+              service: shell_command.generate_weekly_report
+
+          - type: button
+            name: Restart Bark Detector
+            icon: mdi:restart
+            tap_action:
+              action: call-service
+              service: shell_command.restart_bark_detector
+
+          - type: button
+            name: Restart BirdNET
+            icon: mdi:restart
+            tap_action:
+              action: call-service
+              service: shell_command.restart_birdnet
+
+      # ========== STORAGE INFORMATION ==========
+      - type: entities
+        title: Storage Information
+        show_header_toggle: false
+        entities:
+          - entity: sensor.disk_use_percent_mnt_usb
+            name: Audio Storage Used
+            icon: mdi:harddisk
+
+      # ========== QUICK STATS ==========
+      - type: markdown
+        title: Quick Statistics
+        content: >
+          ## Today's Summary
+
+          🐕 **Dog Barking:**
+          - Events: {{ states('sensor.total_barks_today') }}
+          - Duration: {{ states('sensor.barking_time_today') }}
+          - Max dB: {{ states('sensor.max_decibels_today') }}
+
+          🐦 **Bird Activity:**
+          - Species: {{ states('sensor.bird_species_today') }}
+          - Detections: {{ states('sensor.bird_detections_today') }}
+
+          💾 **System:**
+          - Status: {{ states('sensor.audio_detector_status') }}
+          - Storage: {{ states('sensor.disk_use_percent_mnt_usb') }}% used
+
+  # ============================================================================
+  # RECORDINGS VIEW
+  # ============================================================================
+  - title: Recordings
+    path: recordings
+    icon: mdi:microphone
+    cards:
+      - type: markdown
+        title: Audio Recordings
+        content: >
+          ## Recorded Bark Events
+
+          Audio recordings are stored at:
+          `/mnt/usb/bark_audio/recordings/`
+
+          Organized by date: `YYYY/MM/DD/`
+
+          File format: `bark_YYYY-MM-DD_HH-MM-SS.mp3`
+
+          ## Storage Capacity
+
+          - Total Space: 1TB
+          - Used: {{ states('sensor.disk_use_percent_mnt_usb') }}%
+          - Estimated Days Remaining: {{ (1000 * (100 - states('sensor.disk_use_percent_mnt_usb')|float) / 100 / 0.48)|round(0) }} days
+
+          *(Based on ~480MB per day average)*
+
+      - type: markdown
+        title: How to Access Recordings
+        content: >
+          ### From Raspberry Pi:
+
+          ```bash
+          cd /mnt/usb/bark_audio/recordings/
+          ls -lh
+          ```
+
+          ### From Your Computer:
+
+          1. **SSH:** `ssh pi@<your-pi-ip>`
+          2. **SFTP:** Use FileZilla or similar
+          3. **Samba Share:** (if configured)
+
+          ### Play Recordings:
+
+          ```bash
+          # On Raspberry Pi
+          mpg123 bark_2024-03-15_14-30-45.mp3
+          ```
+
+          ### Copy to Computer:
+
+          ```bash
+          # From your computer
+          scp pi@<your-pi-ip>:/mnt/usb/bark_audio/recordings/2024/03/15/*.mp3 ~/Downloads/
+          ```
