@@ -99,7 +99,22 @@ MQTT_TOPIC_MIC_STATUS = "audio/microphone_status"
 BASE_DIR = os.path.expanduser("~/audio_detection")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "yamnet.tflite")
 LABELS_PATH = os.path.join(BASE_DIR, "models", "yamnet_class_map.csv")
-RECORDING_DIR = "/mnt/usb/bark_audio/recordings"
+
+# Determine recording directory: prefer USB mount if available, fall back to local
+USB_MOUNT_PATH = "/mnt/usb/bark_audio/recordings"
+LOCAL_RECORDING_PATH = os.path.join(BASE_DIR, "recordings")
+
+def get_recording_dir():
+    """Determine the best recording directory to use"""
+    # Try USB mount first (for larger storage)
+    if os.path.exists("/mnt/usb") and os.access("/mnt/usb", os.W_OK):
+        print(f"Using USB mount for recordings: {USB_MOUNT_PATH}")
+        return USB_MOUNT_PATH
+    # Fall back to local directory
+    print(f"USB mount not available, using local directory for recordings: {LOCAL_RECORDING_PATH}")
+    return LOCAL_RECORDING_PATH
+
+RECORDING_DIR = get_recording_dir()
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
