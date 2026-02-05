@@ -10,6 +10,14 @@ script: !include scripts.yaml
 scene: !include scenes.yaml
 
 homeassistant:
+  # San Antonio, TX location settings
+  latitude: 29.4241
+  longitude: -98.4936
+  elevation: 198  # meters (650 feet)
+  time_zone: America/Chicago
+  unit_system: imperial
+  country: US
+
   packages: !include_dir_named packages
   auth_providers:
     - type: trusted_networks
