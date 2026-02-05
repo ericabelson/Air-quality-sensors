@@ -261,30 +261,8 @@ class DogBarkClassifier:
             if np.max(np.abs(audio_data)) > 0:
                 audio_data = audio_data / np.max(np.abs(audio_data))
 
-            # Get expected input shape from model
-            expected_shape = self.input_details[0]['shape']
-
-            # Reshape audio to match model's expected input
-            # YAMNet TFLite expects shape (1, num_samples)
-            if len(expected_shape) == 2:
-                # Model expects (batch, samples)
-                if expected_shape[1] != len(audio_data):
-                    # Pad or truncate to match expected length
-                    if len(audio_data) < expected_shape[1]:
-                        # Pad with zeros
-                        audio_data = np.pad(audio_data, (0, expected_shape[1] - len(audio_data)))
-                    else:
-                        # Truncate
-                        audio_data = audio_data[:expected_shape[1]]
-                audio_data = np.expand_dims(audio_data, axis=0)
-            else:
-                # Fallback to simple reshape
-                audio_data = np.expand_dims(audio_data, axis=0)
-
-            # Ensure dtype matches model expectation
-            input_dtype = self.input_details[0]['dtype']
-            if input_dtype != np.float32:
-                audio_data = audio_data.astype(input_dtype)
+            # Flatten to 1D if needed (YAMNet expects 1D input)
+            audio_data = audio_data.flatten()
 
             # Set input tensor
             self.interpreter.set_tensor(self.input_details[0]['index'], audio_data)
