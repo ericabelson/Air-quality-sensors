@@ -88,30 +88,9 @@ mqtt:
       json_attributes_topic: "audio/microphone_status"
       json_attributes_template: "{{ value_json | tojson }}"
 
-  binary_sensor:
-    # Dog Barking Status (Binary)
-    - name: "Dog Barking"
-      unique_id: dog_barking
-      state_topic: "audio/dog_bark"
-      value_template: "{{ value_json.detected }}"
-      payload_on: true
-      payload_off: false
-      device_class: sound
-      icon: mdi:dog
-
-    # Microphone Online (Binary)
-    - name: "Microphone Online"
-      unique_id: microphone_online
-      state_topic: "audio/microphone_status"
-      value_template: "{{ value_json.status == 'online' }}"
-      payload_on: true
-      payload_off: false
-      device_class: connectivity
-      icon: mdi:microphone
-
-# ============================================================================
-# MQTT SENSORS - Bird Detection (from BirdNET-Pi)
-# ============================================================================
+    # ============================================================================
+    # MQTT SENSORS - Bird Detection (from BirdNET-Pi)
+    # ============================================================================
 
     # Most Recent Bird Detection
     - name: "Latest Bird Species"
@@ -148,6 +127,27 @@ mqtt:
       state_topic: "birdnet/stats"
       value_template: "{{ value_json.total_detections | int }}"
       icon: mdi:counter
+
+  binary_sensor:
+    # Dog Barking Status (Binary)
+    - name: "Dog Barking"
+      unique_id: dog_barking
+      state_topic: "audio/dog_bark"
+      value_template: "{{ value_json.detected }}"
+      payload_on: true
+      payload_off: false
+      device_class: sound
+      icon: mdi:dog
+
+    # Microphone Online (Binary)
+    - name: "Microphone Online"
+      unique_id: microphone_online
+      state_topic: "audio/microphone_status"
+      value_template: "{{ value_json.status == 'online' }}"
+      payload_on: true
+      payload_off: false
+      device_class: connectivity
+      icon: mdi:microphone
 
 # ============================================================================
 # TEMPLATE SENSORS
