@@ -57,7 +57,9 @@ except ImportError:
 # ============================================================================
 
 # Audio Settings
-AUDIO_DEVICE_INDEX = None  # None = default device, or specify device number
+# Auto-detect ALSA loopback device at startup (see _find_loopback_device)
+AUDIO_DEVICE_INDEX = None  # Set dynamically; None = default device, or specify device number
+PREFERRED_DEVICE_NAME = "Loopback"  # Look for this in device name for auto-detection
 SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz)
 CHANNELS = 1  # Mono
 CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
@@ -628,52 +630,60 @@ class DogBarkDetector:
 
         logger.info("Initialization complete!")
 
-    def _validate_audio_devices(self):
-        """Check for real audio capture devices and warn if none found"""
+    def _find_and_validate_audio_device(self):
+        """Auto-detect loopback device and validate audio setup.
+
+        Searches for PREFERRED_DEVICE_NAME (e.g. 'Loopback') among input
+        devices. Picks the capture side (hw:X,1) when available. Falls back
+        to AUDIO_DEVICE_INDEX if set, or PyAudio default otherwise.
+        """
+        global AUDIO_DEVICE_INDEX
         device_count = self.audio.get_device_count()
         input_devices = []
+        loopback_capture = None
 
         for i in range(device_count):
             info = self.audio.get_device_info_by_index(i)
             if info.get('maxInputChannels', 0) > 0:
                 input_devices.append((i, info['name']))
+                # Match the loopback capture side (hw:X,1)
+                if (PREFERRED_DEVICE_NAME.lower() in info['name'].lower()
+                        and 'hw:' in info['name'] and ',1)' in info['name']):
+                    loopback_capture = (i, info['name'])
 
         logger.info(f"Found {len(input_devices)} input device(s):")
         for idx, name in input_devices:
-            logger.info(f"  [{idx}] {name}")
+            marker = " <-- selected" if loopback_capture and idx == loopback_capture[0] else ""
+            logger.info(f"  [{idx}] {name}{marker}")
 
-        # Check for ALSA loopback (the expected device for iPhone audio)
-        has_loopback = any('loopback' in name.lower() for _, name in input_devices)
-        has_real_hw = any(
-            'loopback' not in name.lower() and 'null' not in name.lower()
-            for _, name in input_devices
-        )
+        if loopback_capture and AUDIO_DEVICE_INDEX is None:
+            AUDIO_DEVICE_INDEX = loopback_capture[0]
+            logger.info(f"Auto-selected loopback capture device [{AUDIO_DEVICE_INDEX}]: {loopback_capture[1]}")
+
+        if AUDIO_DEVICE_INDEX is not None:
+            logger.info(f"Using audio device index: {AUDIO_DEVICE_INDEX}")
 
         if not input_devices:
             logger.warning("NO INPUT AUDIO DEVICES FOUND!")
             logger.warning("The detector will read silence. Possible causes:")
-            logger.warning("  - No microphone connected")
             logger.warning("  - ALSA loopback module not loaded (run: sudo modprobe snd-aloop)")
             logger.warning("  - iPhone audio stream service not running")
             self.mqtt.publish_mic_status('no_device',
                 'No audio input devices found - check snd-aloop and iphone-audio-stream service')
-
-        elif not has_loopback and not has_real_hw:
-            logger.warning("No real audio capture devices found (only virtual/null devices)")
-            logger.warning("Audio may be silent. Check your audio setup:")
-            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
-            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
+        elif not loopback_capture and AUDIO_DEVICE_INDEX is None:
+            logger.warning("No loopback capture device found - using PyAudio default")
+            logger.warning("Audio may be silent if default is a null source.")
+            logger.warning("  Load ALSA loopback: sudo modprobe snd-aloop")
+            logger.warning("  Start iPhone stream: sudo systemctl start iphone-audio-stream")
             self.mqtt.publish_mic_status('no_device',
-                'No real audio devices - only virtual/null sources available')
-
-        return input_devices
+                'No loopback device found - using default which may be silent')
 
     def start(self):
         """Start the detection system"""
         logger.info("Starting dog bark detection...")
 
-        # Validate audio devices before opening stream
-        self._validate_audio_devices()
+        # Auto-detect loopback device and validate audio setup
+        self._find_and_validate_audio_device()
 
         # Open audio stream
         try:
