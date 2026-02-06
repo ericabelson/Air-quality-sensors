@@ -1,0 +1,444 @@
+title: Home Test
+views:
+  - title: Home
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Air Quality & Security
+            heading_style: title
+            badges:
+              - type: entity
+                entity: alarm_control_panel.soteria
+              - type: entity
+                entity: update.alarmo_update
+              - type: entity
+                entity: switch.diurnal_loudness
+            grid_options:
+              columns: full
+              rows: 3
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.aranet4_22012_carbon_dioxide
+                name: CO2 - Main
+                min: 400
+                max: 3000
+                needle: false
+                severity:
+                  green: 500
+                  yellow: 800
+                  red: 1000
+              - type: gauge
+                entity: sensor.bryan_attic_aranet4_31857_carbon_dioxide
+                name: CO2 - Attic
+                min: 400
+                max: 3000
+                needle: false
+                severity:
+                  green: 500
+                  yellow: 800
+                  red: 1000
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.aranet4_22012_temperature
+                name: Main Temp
+                icon: mdi:thermometer
+              - type: entity
+                entity: sensor.aranet4_22012_humidity
+                name: Main Humid
+                icon: mdi:water-percent
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.bryan_attic_aranet4_31857_temperature
+                name: Attic Temp
+                icon: mdi:thermometer
+              - type: entity
+                entity: sensor.bryan_attic_aranet4_31857_humidity
+                name: Attic Humid
+                icon: mdi:water-percent
+          - type: history-graph
+            title: CO2
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.aranet4_22012_carbon_dioxide
+                name: Main
+              - entity: sensor.bryan_attic_aranet4_31857_carbon_dioxide
+                name: Attic
+            grid_options:
+              columns: 12
+              rows: 6
+      - type: grid
+        cards:
+          - type: heading
+            heading: Dog Barking Monitor
+            heading_style: title
+            badges:
+              - type: entity
+                entity: binary_sensor.dog_barking
+              - type: entity
+                entity: sensor.microphone_status
+            grid_options:
+              columns: full
+              rows: 2
+          - type: markdown
+            content: >
+              {% if is_state('binary_sensor.dog_barking', 'on') %}
+              ## BARKING NOW
+
+              Confidence: **{{ states('sensor.dog_bark_confidence') }}%**
+
+              Decibels: **{{ states('sensor.audio_decibels') }} dB**
+
+              Type: {{ states('sensor.dog_bark_class') }}
+              {% else %}
+              ## All Quiet
+
+              Quiet for: **{{ states('sensor.quiet_streak') }}**
+              {% endif %}
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.audio_decibels
+                name: Current Sound Level
+                min: 0
+                max: 120
+                needle: true
+                severity:
+                  green: 0
+                  yellow: 60
+                  red: 90
+                unit: dB
+              - type: gauge
+                entity: sensor.bark_minutes_per_hour
+                name: Avg Minutes Per Hour
+                min: 0
+                max: 60
+                needle: true
+                severity:
+                  green: 0
+                  yellow: 10
+                  red: 25
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.total_barks_today
+                name: Bark Events Today
+                icon: mdi:dog
+              - type: entity
+                entity: sensor.barking_time_today
+                name: Total Time Barking
+                icon: mdi:clock-outline
+              - type: entity
+                entity: sensor.max_decibels_today
+                name: Max Decibels
+                icon: mdi:volume-high
+          - type: history-graph
+            title: 72-Hour Barking Timeline
+            hours_to_show: 72
+            entities:
+              - entity: binary_sensor.dog_barking
+                name: Barking
+            grid_options:
+              columns: 12
+              rows: 6
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bird Detection
+            heading_style: title
+            badges:
+              - type: entity
+                entity: sensor.bird_species_today
+              - type: entity
+                entity: sensor.bird_detections_today
+            grid_options:
+              columns: full
+              rows: 2
+          - type: markdown
+            content: >
+              ## Latest Bird Detection
+
+              **{{ states('sensor.latest_bird_species') }}**
+
+              *{{ states('sensor.bird_scientific_name') }}*
+
+              Confidence: **{{ states('sensor.bird_confidence') }}%**
+
+              Detected: {{ relative_time(states.sensor.latest_bird_species.last_changed) }} ago
+          - type: entities
+            title: Recent Bird Species (Last 24 Hours)
+            show_header_toggle: false
+            entities:
+              - entity: sensor.latest_bird_species
+                name: Latest Species
+                icon: mdi:bird
+              - entity: sensor.bird_scientific_name
+                name: Scientific Name
+                icon: mdi:book-open-variant
+              - entity: sensor.bird_confidence
+                name: Confidence
+                icon: mdi:percent
+              - entity: sensor.bird_species_today
+                name: Unique Species Today
+                icon: mdi:format-list-numbered
+              - entity: sensor.bird_detections_today
+                name: Total Detections Today
+                icon: mdi:counter
+          - type: history-graph
+            title: Bird Detections (7 Days)
+            hours_to_show: 168
+            entities:
+              - entity: sensor.bird_detections_today
+                name: Detections
+              - entity: sensor.bird_species_today
+                name: Unique Species
+            grid_options:
+              columns: 12
+              rows: 5
+      - type: grid
+        cards:
+          - type: heading
+            heading: Media & Lighting
+          - type: tile
+            entity: sensor.sun_next_rising
+          - type: tile
+            entity: sensor.sun_next_setting
+          - type: media-control
+            entity: media_player.diurnal
+          - type: media-control
+            entity: media_player.nocturnal
+          - type: media-control
+            entity: media_player.ickyah
+      - type: grid
+        cards:
+          - type: heading
+            heading: Security System
+          - type: alarm-panel
+            states:
+              - arm_home
+              - arm_away
+            entity: alarm_control_panel.alarmo
+            grid_options:
+              columns: 12
+              rows: 4
+      - type: grid
+        cards:
+          - type: heading
+            heading: F3800 Power Station
+            heading_style: title
+            badges:
+              - type: entity
+                entity: sensor.solix_f3800_state_of_charge
+              - type: entity
+                entity: binary_sensor.solix_f3800_wifi_connection
+              - type: entity
+                entity: binary_sensor.solix_f3800_ota_update
+            grid_options:
+              columns: full
+              rows: 3
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.solix_f3800_state_of_charge
+                name: Battery Level
+                min: 0
+                max: 100
+                needle: false
+                severity:
+                  green: 60
+                  yellow: 30
+                  red: 10
+                unit: '%'
+              - type: gauge
+                entity: sensor.solix_f3800_solar_power
+                name: Solar Input
+                min: 0
+                max: 2400
+                needle: false
+                severity:
+                  green: 1000
+                  yellow: 500
+                  red: 0
+                unit: W
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.solix_f3800_ac_output_power
+                name: AC Output
+                min: 0
+                max: 6000
+                needle: false
+                severity:
+                  green: 0
+                  yellow: 3000
+                  red: 4500
+                unit: W
+              - type: gauge
+                entity: sensor.solix_f3800_charge_power
+                name: Charging
+                min: 0
+                max: 2400
+                needle: false
+                unit: W
+          - type: glance
+            title: Solar Panels
+            entities:
+              - entity: sensor.solix_f3800_solar_pv1
+                name: Panel 1
+              - entity: sensor.solix_f3800_solar_pv2
+                name: Panel 2
+              - entity: sensor.solix_f3800_solar_power
+                name: Total Solar
+            show_icon: true
+            show_state: true
+          - type: glance
+            title: Power Flow
+            entities:
+              - entity: sensor.solix_f3800_ac_input_power
+                name: AC In
+              - entity: sensor.solix_f3800_ac_output_power
+                name: AC Out
+              - entity: sensor.solix_f3800_dc_output_power
+                name: DC Out
+            show_icon: true
+            show_state: true
+          - type: glance
+            title: Battery Details
+            entities:
+              - entity: sensor.solix_f3800_battery_energy
+                name: Energy
+              - entity: sensor.solix_f3800_temperature
+                name: Temp
+              - entity: sensor.solix_f3800_remaining_time
+                name: Runtime
+              - entity: sensor.solix_f3800_main_battery_soc
+                name: Main SoC
+            show_icon: true
+            show_state: true
+          - type: glance
+            title: USB-C Ports
+            entities:
+              - entity: sensor.solix_f3800_usb_c_port_1
+                name: Port 1
+              - entity: sensor.solix_f3800_usb_c_port_2
+                name: Port 2
+              - entity: sensor.solix_f3800_usb_c_port_3
+                name: Port 3
+            show_icon: true
+            show_state: true
+          - type: entities
+            title: Controls
+            entities:
+              - entity: switch.solix_f3800_ac_output
+                name: AC Output
+              - entity: switch.solix_f3800_dc_output
+                name: DC Output
+          - type: history-graph
+            title: Power Flow (3 days)
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.solix_f3800_solar_power
+                name: Solar
+              - entity: sensor.solix_f3800_ac_output_power
+                name: AC Output
+              - entity: sensor.solix_f3800_charge_power
+                name: Charging
+            grid_options:
+              columns: 12
+              rows: 6
+          - type: history-graph
+            title: Battery Level (3 days)
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.solix_f3800_state_of_charge
+                name: Battery %
+            grid_options:
+              columns: 12
+              rows: 4
+      - type: grid
+        cards:
+          - type: history-graph
+            title: Temperature
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.ws3000_sensor_1_temperature_colored
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_temperature_colored
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_temperature_colored
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_temperature_colored
+                name: Attic
+          - type: glance
+            entities:
+              - entity: sensor.ws3000_sensor_1_temperature
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_temperature
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_temperature
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_temperature
+                name: Attic
+            show_icon: false
+            show_state: true
+      - type: grid
+        cards:
+          - type: history-graph
+            title: Humidity
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.ws3000_sensor_1_humidity_colored
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_humidity_colored
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_humidity_colored
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_humidity_colored
+                name: Attic
+          - type: glance
+            entities:
+              - entity: sensor.ws3000_sensor_1_humidity
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_humidity
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_humidity
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_humidity
+                name: Attic
+            show_icon: false
+            show_state: true
+      - type: grid
+        cards:
+          - type: history-graph
+            title: Dew Point
+            hours_to_show: 72
+            refresh_interval: 60
+            entities:
+              - entity: sensor.ws3000_sensor_1_dew_point
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_dew_point
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_dew_point
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_dew_point
+                name: Attic
+          - type: glance
+            entities:
+              - entity: sensor.ws3000_sensor_1_dew_point
+                name: Outside
+              - entity: sensor.ws3000_sensor_4_dew_point
+                name: Inside
+              - entity: sensor.ws3000_sensor_2_dew_point
+                name: UnderHouse
+              - entity: sensor.ws3000_sensor_3_dew_point
+                name: Attic
+            show_icon: false
+            show_state: true
