@@ -80,6 +80,11 @@ REFERENCE_PRESSURE = 20e-6  # 20 micropascals (standard reference for dB SPL)
 MIN_DB = 30  # Minimum decibel threshold to consider
 MAX_DB = 120  # Maximum decibel (for safety)
 
+# Silence Detection Settings
+SILENCE_THRESHOLD_DB = 32  # dB level below which audio is considered silence
+SILENCE_ALERT_SECONDS = 60  # Alert after this many seconds of continuous silence
+SILENCE_CHECK_INTERVAL = 30  # Check for silence every N seconds
+
 # Event Grouping Settings
 GAP_5MIN = 300  # 5 minutes in seconds
 GAP_10MIN = 600  # 10 minutes in seconds
@@ -602,6 +607,11 @@ class DogBarkDetector:
         self.consecutive_read_errors = 0
         self.mic_status = 'starting'
 
+        # Silence detection - detect when mic is connected but getting no real audio
+        self.silence_start_time = None
+        self.last_silence_check = datetime.now()
+        self.silence_alerted = False
+
         # Statistics
         self.daily_stats = {
             'date': datetime.now().strftime('%Y-%m-%d'),
@@ -618,9 +628,52 @@ class DogBarkDetector:
 
         logger.info("Initialization complete!")
 
+    def _validate_audio_devices(self):
+        """Check for real audio capture devices and warn if none found"""
+        device_count = self.audio.get_device_count()
+        input_devices = []
+
+        for i in range(device_count):
+            info = self.audio.get_device_info_by_index(i)
+            if info.get('maxInputChannels', 0) > 0:
+                input_devices.append((i, info['name']))
+
+        logger.info(f"Found {len(input_devices)} input device(s):")
+        for idx, name in input_devices:
+            logger.info(f"  [{idx}] {name}")
+
+        # Check for ALSA loopback (the expected device for iPhone audio)
+        has_loopback = any('loopback' in name.lower() for _, name in input_devices)
+        has_real_hw = any(
+            'loopback' not in name.lower() and 'null' not in name.lower()
+            for _, name in input_devices
+        )
+
+        if not input_devices:
+            logger.warning("NO INPUT AUDIO DEVICES FOUND!")
+            logger.warning("The detector will read silence. Possible causes:")
+            logger.warning("  - No microphone connected")
+            logger.warning("  - ALSA loopback module not loaded (run: sudo modprobe snd-aloop)")
+            logger.warning("  - iPhone audio stream service not running")
+            self.mqtt.publish_mic_status('no_device',
+                'No audio input devices found - check snd-aloop and iphone-audio-stream service')
+
+        elif not has_loopback and not has_real_hw:
+            logger.warning("No real audio capture devices found (only virtual/null devices)")
+            logger.warning("Audio may be silent. Check your audio setup:")
+            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
+            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
+            self.mqtt.publish_mic_status('no_device',
+                'No real audio devices - only virtual/null sources available')
+
+        return input_devices
+
     def start(self):
         """Start the detection system"""
         logger.info("Starting dog bark detection...")
+
+        # Validate audio devices before opening stream
+        self._validate_audio_devices()
 
         # Open audio stream
         try:
@@ -639,6 +692,7 @@ class DogBarkDetector:
             for i in range(self.audio.get_device_count()):
                 info = self.audio.get_device_info_by_index(i)
                 logger.error(f"  {i}: {info['name']}")
+            self.mqtt.publish_mic_status('error', f'Failed to open audio stream: {e}')
             raise
 
         # Start detection loop
@@ -675,6 +729,53 @@ class DogBarkDetector:
                 # Publish decibels (throttled to every second)
                 if int(time.time()) % 1 == 0:
                     self.mqtt.publish_decibels(decibels)
+
+                # Silence detection - catch the case where stream is open but reading dead air
+                if decibels <= SILENCE_THRESHOLD_DB:
+                    if self.silence_start_time is None:
+                        self.silence_start_time = datetime.now()
+                    silence_duration = (datetime.now() - self.silence_start_time).total_seconds()
+
+                    # Periodic silence check to avoid log spam
+                    time_since_silence_check = (datetime.now() - self.last_silence_check).total_seconds()
+                    if silence_duration >= SILENCE_ALERT_SECONDS and time_since_silence_check >= SILENCE_CHECK_INTERVAL:
+                        self.last_silence_check = datetime.now()
+                        if not self.silence_alerted:
+                            self.silence_alerted = True
+                            self.mic_status = 'silence'
+                            logger.warning(
+                                f"SILENCE DETECTED: Audio stuck at {decibels:.0f} dB for "
+                                f"{int(silence_duration)}s. No real audio is being captured!"
+                            )
+                            logger.warning("Possible causes:")
+                            logger.warning("  - ALSA loopback not loaded (sudo modprobe snd-aloop)")
+                            logger.warning("  - iphone-audio-stream service not running")
+                            logger.warning("  - iPhone Periscope HD app not streaming")
+                            logger.warning("  - Wrong audio device selected")
+                            self.mqtt.publish_mic_status(
+                                'silence',
+                                f'No real audio - constant {decibels:.0f} dB for {int(silence_duration)}s. '
+                                f'Check: snd-aloop module, iphone-audio-stream service, Periscope HD app'
+                            )
+                        elif int(silence_duration) % 300 == 0:
+                            # Re-alert every 5 minutes of continuous silence
+                            logger.warning(
+                                f"Still silent: {int(silence_duration)}s of silence "
+                                f"({int(silence_duration / 60)} min)"
+                            )
+                            self.mqtt.publish_mic_status(
+                                'silence',
+                                f'Continuous silence for {int(silence_duration / 60)} min. '
+                                f'No audio input device providing real audio.'
+                            )
+                else:
+                    # Real audio detected - reset silence tracking
+                    if self.silence_alerted:
+                        logger.info(f"Audio restored - silence ended after "
+                                    f"{int((datetime.now() - self.silence_start_time).total_seconds())}s")
+                        self.mqtt.publish_mic_status('online', 'Real audio detected - silence ended')
+                    self.silence_start_time = None
+                    self.silence_alerted = False
 
                 # Check microphone health (every 30 seconds)
                 time_since_audio = (datetime.now() - self.last_audio_received).total_seconds()
