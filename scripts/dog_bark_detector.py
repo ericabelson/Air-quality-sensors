@@ -60,8 +60,7 @@ except ImportError:
 AUDIO_DEVICE_INDEX = None  # None = default device, or specify device number
 SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz)
 CHANNELS = 1  # Mono
-CHUNK_DURATION = 1.0  # seconds per analysis chunk
-CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)
+CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
 DOG_BARK_CONFIDENCE_THRESHOLD = 0.70  # 70% confidence minimum
@@ -263,6 +262,14 @@ class DogBarkClassifier:
 
             # Flatten to 1D if needed (YAMNet expects 1D input)
             audio_data = audio_data.flatten()
+
+            # Ensure we have exactly 15600 samples (YAMNet model requirement)
+            if len(audio_data) < 15600:
+                # Pad with zeros if too short
+                audio_data = np.pad(audio_data, (0, 15600 - len(audio_data)))
+            elif len(audio_data) > 15600:
+                # Truncate if too long
+                audio_data = audio_data[:15600]
 
             # Set input tensor
             self.interpreter.set_tensor(self.input_details[0]['index'], audio_data)
