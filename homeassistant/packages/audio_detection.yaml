@@ -88,30 +88,9 @@ mqtt:
       json_attributes_topic: "audio/microphone_status"
       json_attributes_template: "{{ value_json | tojson }}"
 
-  binary_sensor:
-    # Dog Barking Status (Binary)
-    - name: "Dog Barking"
-      unique_id: dog_barking
-      state_topic: "audio/dog_bark"
-      value_template: "{{ value_json.detected }}"
-      payload_on: true
-      payload_off: false
-      device_class: sound
-      icon: mdi:dog
-
-    # Microphone Online (Binary)
-    - name: "Microphone Online"
-      unique_id: microphone_online
-      state_topic: "audio/microphone_status"
-      value_template: "{{ value_json.status == 'online' }}"
-      payload_on: true
-      payload_off: false
-      device_class: connectivity
-      icon: mdi:microphone
-
-# ============================================================================
-# MQTT SENSORS - Bird Detection (from BirdNET-Pi)
-# ============================================================================
+    # ============================================================================
+    # MQTT SENSORS - Bird Detection (from BirdNET-Pi)
+    # ============================================================================
 
     # Most Recent Bird Detection
     - name: "Latest Bird Species"
@@ -149,19 +128,39 @@ mqtt:
       value_template: "{{ value_json.total_detections | int }}"
       icon: mdi:counter
 
+  binary_sensor:
+    # Dog Barking Status (Binary)
+    - name: "Dog Barking"
+      unique_id: dog_barking
+      state_topic: "audio/dog_bark"
+      value_template: "{{ value_json.detected }}"
+      payload_on: true
+      payload_off: false
+      device_class: sound
+      icon: mdi:dog
+
+    # Microphone Online (Binary)
+    - name: "Microphone Online"
+      unique_id: microphone_online
+      state_topic: "audio/microphone_status"
+      value_template: "{{ value_json.status == 'online' }}"
+      payload_on: true
+      payload_off: false
+      device_class: connectivity
+      icon: mdi:microphone
+
 # ============================================================================
 # TEMPLATE SENSORS
 # ============================================================================
 
-sensor:
-  # Bark Duration Calculator (minutes of barking per hour)
-  - platform: template
-    sensors:
-      bark_minutes_per_hour:
-        friendly_name: "Barking Minutes Per Hour"
+template:
+  - sensor:
+      # Bark Duration Calculator (minutes of barking per hour)
+      - unique_id: bark_minutes_per_hour
+        name: "Barking Minutes Per Hour"
         unit_of_measurement: "min/hr"
-        icon_template: mdi:clock-outline
-        value_template: >
+        icon: mdi:clock-outline
+        state: >
           {% set total_barks = states('sensor.total_barks_today') | int %}
           {% set hours_today = now().hour + 1 %}
           {% if hours_today > 0 and total_barks > 0 %}
@@ -171,10 +170,10 @@ sensor:
           {% endif %}
 
       # Decibel Status (Color Coded)
-      decibel_status:
-        friendly_name: "Decibel Level Status"
-        icon_template: mdi:volume-high
-        value_template: >
+      - unique_id: decibel_status
+        name: "Decibel Level Status"
+        icon: mdi:volume-high
+        state: >
           {% set db = states('sensor.audio_decibels') | float %}
           {% if db < 50 %}
             Quiet
@@ -187,15 +186,15 @@ sensor:
           {% endif %}
 
       # Bark Event Status (for dashboard display)
-      bark_event_status:
-        friendly_name: "Bark Status"
-        icon_template: >
+      - unique_id: bark_event_status
+        name: "Bark Status"
+        icon: >
           {% if is_state('binary_sensor.dog_barking', 'on') %}
             mdi:dog
           {% else %}
             mdi:dog-side
           {% endif %}
-        value_template: >
+        state: >
           {% if is_state('binary_sensor.dog_barking', 'on') %}
             🔴 BARKING NOW
           {% else %}
@@ -203,10 +202,10 @@ sensor:
           {% endif %}
 
       # Current Quiet Streak (time since last bark)
-      quiet_streak:
-        friendly_name: "Current Quiet Streak"
-        icon_template: mdi:timer-outline
-        value_template: >
+      - unique_id: quiet_streak
+        name: "Current Quiet Streak"
+        icon: mdi:timer-outline
+        state: >
           {% set last_bark = as_timestamp(states.binary_sensor.dog_barking.last_changed) %}
           {% set now = as_timestamp(now()) %}
           {% if last_bark %}

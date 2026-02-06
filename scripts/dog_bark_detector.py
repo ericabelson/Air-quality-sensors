@@ -60,8 +60,7 @@ except ImportError:
 AUDIO_DEVICE_INDEX = None  # None = default device, or specify device number
 SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz)
 CHANNELS = 1  # Mono
-CHUNK_DURATION = 1.0  # seconds per analysis chunk
-CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)
+CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
 DOG_BARK_CONFIDENCE_THRESHOLD = 0.70  # 70% confidence minimum
@@ -99,7 +98,22 @@ MQTT_TOPIC_MIC_STATUS = "audio/microphone_status"
 BASE_DIR = os.path.expanduser("~/audio_detection")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "yamnet.tflite")
 LABELS_PATH = os.path.join(BASE_DIR, "models", "yamnet_class_map.csv")
-RECORDING_DIR = "/mnt/usb/bark_audio/recordings"
+
+# Determine recording directory: prefer USB mount if available, fall back to local
+USB_MOUNT_PATH = "/mnt/usb/bark_audio/recordings"
+LOCAL_RECORDING_PATH = os.path.join(BASE_DIR, "recordings")
+
+def get_recording_dir():
+    """Determine the best recording directory to use"""
+    # Try USB mount first (for larger storage)
+    if os.path.exists("/mnt/usb") and os.access("/mnt/usb", os.W_OK):
+        print(f"Using USB mount for recordings: {USB_MOUNT_PATH}")
+        return USB_MOUNT_PATH
+    # Fall back to local directory
+    print(f"USB mount not available, using local directory for recordings: {LOCAL_RECORDING_PATH}")
+    return LOCAL_RECORDING_PATH
+
+RECORDING_DIR = get_recording_dir()
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
@@ -239,15 +253,23 @@ class DogBarkClassifier:
             dict with top predictions and confidence scores
         """
         try:
-            # Ensure correct shape and type
+            # Ensure correct type
             audio_data = audio_data.astype(np.float32)
 
             # Normalize audio to [-1, 1]
             if np.max(np.abs(audio_data)) > 0:
                 audio_data = audio_data / np.max(np.abs(audio_data))
 
-            # Reshape for model input
-            audio_data = np.expand_dims(audio_data, axis=0)
+            # Flatten to 1D if needed (YAMNet expects 1D input)
+            audio_data = audio_data.flatten()
+
+            # Ensure we have exactly 15600 samples (YAMNet model requirement)
+            if len(audio_data) < 15600:
+                # Pad with zeros if too short
+                audio_data = np.pad(audio_data, (0, 15600 - len(audio_data)))
+            elif len(audio_data) > 15600:
+                # Truncate if too long
+                audio_data = audio_data[:15600]
 
             # Set input tensor
             self.interpreter.set_tensor(self.input_details[0]['index'], audio_data)
