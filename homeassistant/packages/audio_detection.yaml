@@ -24,6 +24,7 @@ mqtt:
       unit_of_measurement: "dB"
       icon: mdi:volume-high
       device_class: sound_pressure
+      state_class: measurement
 
     # Dog Bark Confidence
     - name: "Dog Bark Confidence"
@@ -53,6 +54,7 @@ mqtt:
       state_topic: "audio/bark_stats"
       value_template: "{{ value_json.total_barks | int }}"
       icon: mdi:counter
+      state_class: total
 
     # Max Decibels Today
     - name: "Max Decibels Today"
@@ -61,6 +63,7 @@ mqtt:
       value_template: "{{ value_json.max_decibels | round(1) }}"
       unit_of_measurement: "dB"
       icon: mdi:volume-high
+      state_class: measurement
 
     # Last Detection (updated every minute)
     - name: "Last Bark Detection"
@@ -141,6 +144,7 @@ mqtt:
       state_topic: "birdnet/stats"
       value_template: "{{ value_json.total_detections | int }}"
       icon: mdi:counter
+      state_class: total
 
     # BirdNET Analyzer Status
     - name: "BirdNET Status"
@@ -211,7 +215,7 @@ template:
       # Bark Duration Calculator (minutes of barking per hour)
       # Uses actual barking time from history_stats (in hours) divided by elapsed hours
       - unique_id: bark_minutes_per_hour
-        name: "Barking Minutes Per Hour"
+        name: "Bark Minutes Per Hour"
         unit_of_measurement: "min/hr"
         icon: mdi:clock-outline
         state: >
@@ -242,7 +246,7 @@ template:
 
       # Decibel Status (Color Coded)
       - unique_id: decibel_status
-        name: "Decibel Level Status"
+        name: "Decibel Status"
         icon: mdi:volume-high
         state: >
           {% set db = states('sensor.audio_decibels') | float %}
@@ -258,7 +262,7 @@ template:
 
       # Bark Event Status (for dashboard display)
       - unique_id: bark_event_status
-        name: "Bark Status"
+        name: "Bark Event Status"
         icon: >
           {% if is_state('binary_sensor.dog_barking', 'on') %}
             mdi:dog
@@ -275,7 +279,7 @@ template:
       # Current Quiet Streak (time since last bark)
       # Shows "NOT MONITORING" when detector is offline to avoid conflating downtime with quiet
       - unique_id: quiet_streak
-        name: "Current Quiet Streak"
+        name: "Quiet Streak"
         icon: mdi:timer-outline
         state: >
           {% if is_state('binary_sensor.bark_monitor_active', 'off') %}
@@ -469,7 +473,7 @@ homeassistant:
 
     # Status Sensors
     sensor.bark_event_status:
-      friendly_name: "Current Status"
+      friendly_name: "Current Bark Status"
 
     sensor.quiet_streak:
-      friendly_name: "Quiet Period"
+      friendly_name: "Current Quiet Streak"
