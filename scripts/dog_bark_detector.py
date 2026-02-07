@@ -238,16 +238,23 @@ class DogBarkClassifier:
         logger.info(f"Loaded {len(self.class_names)} class labels")
 
     def _load_labels(self, labels_path):
-        """Load YAMNet class labels from CSV"""
+        """Load YAMNet class labels from CSV.
+
+        The yamnet_class_map.csv has columns: index, mid, display_name
+        We need the display_name (column 2), not the mid (column 1).
+        """
+        import csv
         class_names = []
         try:
             with open(labels_path, 'r') as f:
-                # Skip header
-                next(f)
-                for line in f:
-                    parts = line.strip().split(',')
-                    if len(parts) >= 2:
-                        class_names.append(parts[1].strip('"'))
+                reader = csv.reader(f)
+                next(reader)  # Skip header
+                for row in reader:
+                    if len(row) >= 3:
+                        class_names.append(row[2].strip())
+                    elif len(row) >= 2:
+                        class_names.append(row[1].strip())
+            logger.info(f"Sample labels: {class_names[:5]}")
             return class_names
         except Exception as e:
             logger.error(f"Error loading labels: {e}")
