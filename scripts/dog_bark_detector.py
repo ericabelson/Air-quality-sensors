@@ -65,7 +65,7 @@ CHANNELS = 1  # Mono
 CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
-DOG_BARK_CONFIDENCE_THRESHOLD = 0.70  # 70% confidence minimum
+DOG_BARK_CONFIDENCE_THRESHOLD = 0.25  # Lowered from 0.70 for debugging - raise after testing
 DOG_BARK_CLASS_NAMES = [
     "Animal",
     "Domestic animals, pets",
@@ -799,6 +799,12 @@ class DogBarkDetector:
 
                 # Classify audio
                 predictions = self.classifier.classify_audio(audio_data)
+
+                # Log top predictions periodically for debugging
+                if predictions and int(time.time()) % 5 == 0:
+                    top3 = predictions[:3]
+                    top_str = ", ".join(f"{p['class']}:{p['confidence']:.3f}" for p in top3)
+                    logger.info(f"[DEBUG] dB={decibels:.1f} top3=[{top_str}]")
 
                 # Check for dog bark
                 is_bark, confidence, class_name = self.classifier.is_dog_bark(predictions)
