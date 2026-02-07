@@ -78,7 +78,11 @@ DOG_BARK_CLASS_NAMES = [
 ]
 
 # Decibel Settings
-REFERENCE_PRESSURE = 20e-6  # 20 micropascals (standard reference for dB SPL)
+# Audio is raw int16 samples (0-32768), not calibrated Pascals.
+# We use dBFS (full-scale) + offset to approximate SPL.
+# 90 dB offset maps: quiet room ~35 dB, talking ~60 dB, loud bark ~80 dB
+DBFS_OFFSET = 90  # dBFS-to-SPL approximation offset
+INT16_MAX = 32768.0  # Full-scale reference for 16-bit audio
 MIN_DB = 30  # Minimum decibel threshold to consider
 MAX_DB = 120  # Maximum decibel (for safety)
 
@@ -331,13 +335,17 @@ class DogBarkClassifier:
 
 def calculate_decibels(audio_data):
     """
-    Calculate decibel level (dB SPL) from audio data
+    Calculate approximate dB SPL from raw int16 audio samples.
+
+    Uses dBFS (decibels relative to full-scale) plus an offset to
+    approximate real-world SPL. Without a calibrated microphone,
+    absolute values are estimates, but relative changes are accurate.
 
     Args:
-        audio_data: numpy array of audio samples
+        audio_data: numpy array of int16 audio samples (as float32)
 
     Returns:
-        float: decibel level
+        float: approximate decibel level (SPL)
     """
     # Calculate RMS (Root Mean Square) amplitude
     rms = np.sqrt(np.mean(audio_data**2))
@@ -346,9 +354,11 @@ def calculate_decibels(audio_data):
     if rms < 1e-10:
         return MIN_DB
 
-    # Convert to decibels SPL (Sound Pressure Level)
-    # dB = 20 * log10(rms / reference)
-    db = 20 * np.log10(rms / REFERENCE_PRESSURE)
+    # Normalize to 0-1 range (int16 full scale = 32768)
+    # Then convert to dBFS and add offset to approximate SPL
+    # dBFS = 20 * log10(rms / 32768)  → range: -90 to 0
+    # dB SPL ≈ dBFS + 90              → range: ~0 to 90
+    db = 20 * np.log10(rms / INT16_MAX) + DBFS_OFFSET
 
     # Clamp to reasonable range
     db = max(MIN_DB, min(MAX_DB, db))
