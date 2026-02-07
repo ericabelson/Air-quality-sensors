@@ -57,15 +57,11 @@ except ImportError:
 # ============================================================================
 
 # Audio Settings
-# Auto-detect ALSA loopback device at startup (see _find_loopback_device)
-AUDIO_DEVICE_INDEX = None  # Set dynamically; None = default device, or specify device number
-PREFERRED_DEVICE_NAME = "Loopback"  # Look for this in device name for auto-detection
-DEVICE_SAMPLE_RATE = 48000  # Hz - match the ALSA loopback device rate
-YAMNET_SAMPLE_RATE = 16000  # Hz - YAMNet requires 16kHz
-SAMPLE_RATE = YAMNET_SAMPLE_RATE  # Used for dB calculation and YAMNet inference
+# Use PulseAudio (default device) so both this detector and BirdNET can share
+# the same loopback source. PulseAudio handles resampling from 48kHz to 16kHz.
+AUDIO_DEVICE_INDEX = None  # None = PulseAudio default source (shared with BirdNET)
+SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz; PulseAudio resamples from device rate)
 CHANNELS = 1  # Mono
-# Read enough samples at device rate to get 0.975s of audio (YAMNet's window)
-DEVICE_CHUNK_SIZE = int(15600 * DEVICE_SAMPLE_RATE / YAMNET_SAMPLE_RATE)  # 46800 at 48kHz
 CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
@@ -644,73 +640,54 @@ class DogBarkDetector:
 
         logger.info("Initialization complete!")
 
-    def _find_and_validate_audio_device(self):
-        """Auto-detect loopback device and validate audio setup.
+    def _validate_audio_setup(self):
+        """Log available audio devices and validate PulseAudio source.
 
-        Searches for PREFERRED_DEVICE_NAME (e.g. 'Loopback') among input
-        devices. Picks the capture side (hw:X,1) when available. Falls back
-        to AUDIO_DEVICE_INDEX if set, or PyAudio default otherwise.
+        Uses PulseAudio default source (shared with BirdNET) rather than
+        directly claiming the ALSA loopback hw: device, which would prevent
+        other consumers from reading.
         """
-        global AUDIO_DEVICE_INDEX
         device_count = self.audio.get_device_count()
         input_devices = []
-        loopback_capture = None
 
         for i in range(device_count):
             info = self.audio.get_device_info_by_index(i)
             if info.get('maxInputChannels', 0) > 0:
                 input_devices.append((i, info['name']))
-                # Match the loopback capture side (hw:X,1)
-                if (PREFERRED_DEVICE_NAME.lower() in info['name'].lower()
-                        and 'hw:' in info['name'] and ',1)' in info['name']):
-                    loopback_capture = (i, info['name'])
 
         logger.info(f"Found {len(input_devices)} input device(s):")
         for idx, name in input_devices:
-            marker = " <-- selected" if loopback_capture and idx == loopback_capture[0] else ""
-            logger.info(f"  [{idx}] {name}{marker}")
+            logger.info(f"  [{idx}] {name}")
 
-        if loopback_capture and AUDIO_DEVICE_INDEX is None:
-            AUDIO_DEVICE_INDEX = loopback_capture[0]
-            logger.info(f"Auto-selected loopback capture device [{AUDIO_DEVICE_INDEX}]: {loopback_capture[1]}")
-
-        if AUDIO_DEVICE_INDEX is not None:
-            logger.info(f"Using audio device index: {AUDIO_DEVICE_INDEX}")
+        logger.info(f"Using PulseAudio default source (AUDIO_DEVICE_INDEX={AUDIO_DEVICE_INDEX})")
+        logger.info("Ensure PulseAudio default source is set to the loopback:")
+        logger.info("  pactl set-default-source alsa_input.platform-snd_aloop.0.analog-stereo")
 
         if not input_devices:
             logger.warning("NO INPUT AUDIO DEVICES FOUND!")
-            logger.warning("The detector will read silence. Possible causes:")
-            logger.warning("  - ALSA loopback module not loaded (run: sudo modprobe snd-aloop)")
-            logger.warning("  - iPhone audio stream service not running")
+            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
+            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
             self.mqtt.publish_mic_status('no_device',
                 'No audio input devices found - check snd-aloop and iphone-audio-stream service')
-        elif not loopback_capture and AUDIO_DEVICE_INDEX is None:
-            logger.warning("No loopback capture device found - using PyAudio default")
-            logger.warning("Audio may be silent if default is a null source.")
-            logger.warning("  Load ALSA loopback: sudo modprobe snd-aloop")
-            logger.warning("  Start iPhone stream: sudo systemctl start iphone-audio-stream")
-            self.mqtt.publish_mic_status('no_device',
-                'No loopback device found - using default which may be silent')
 
     def start(self):
         """Start the detection system"""
         logger.info("Starting dog bark detection...")
 
-        # Auto-detect loopback device and validate audio setup
-        self._find_and_validate_audio_device()
+        # Validate audio setup
+        self._validate_audio_setup()
 
         # Open audio stream
         try:
             self.stream = self.audio.open(
                 format=pyaudio.paInt16,
                 channels=CHANNELS,
-                rate=DEVICE_SAMPLE_RATE,
+                rate=SAMPLE_RATE,
                 input=True,
                 input_device_index=AUDIO_DEVICE_INDEX,
-                frames_per_buffer=DEVICE_CHUNK_SIZE
+                frames_per_buffer=CHUNK_SIZE
             )
-            logger.info(f"Audio stream opened (device rate: {DEVICE_SAMPLE_RATE} Hz, "
-                         f"YAMNet rate: {YAMNET_SAMPLE_RATE} Hz)")
+            logger.info(f"Audio stream opened (sample rate: {SAMPLE_RATE} Hz)")
         except Exception as e:
             logger.error(f"Error opening audio stream: {e}")
             logger.error("Available audio devices:")
@@ -734,16 +711,9 @@ class DogBarkDetector:
 
         while True:
             try:
-                # Read audio chunk at device sample rate
-                audio_bytes = self.stream.read(DEVICE_CHUNK_SIZE, exception_on_overflow=False)
-                audio_data_raw = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
-
-                # Downsample from device rate to YAMNet rate (e.g. 48kHz -> 16kHz)
-                if DEVICE_SAMPLE_RATE != YAMNET_SAMPLE_RATE:
-                    ratio = DEVICE_SAMPLE_RATE // YAMNET_SAMPLE_RATE
-                    audio_data = audio_data_raw[::ratio]  # Simple decimation (48k/16k = take every 3rd sample)
-                else:
-                    audio_data = audio_data_raw
+                # Read audio chunk (PulseAudio resamples to 16kHz for us)
+                audio_bytes = self.stream.read(CHUNK_SIZE, exception_on_overflow=False)
+                audio_data = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
 
                 # Mark that we received audio successfully
                 self.last_audio_received = datetime.now()
