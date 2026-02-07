@@ -648,22 +648,43 @@ class DogBarkDetector:
         logger.info("Initialization complete!")
 
     def _validate_audio_setup(self):
-        """Log available audio devices and validate PulseAudio source.
+        """Find the PulseAudio device and validate audio setup.
 
-        Uses PulseAudio default source (shared with BirdNET) rather than
-        directly claiming the ALSA loopback hw: device, which would prevent
-        other consumers from reading.
+        PyAudio's 'default' device often maps to ALSA default (silence),
+        not PulseAudio. Explicitly find and use the 'pulse' device so we
+        share the loopback source with BirdNET.
         """
+        global AUDIO_DEVICE_INDEX
         device_count = self.audio.get_device_count()
         input_devices = []
+        pulse_device = None
 
         for i in range(device_count):
             info = self.audio.get_device_info_by_index(i)
             if info.get('maxInputChannels', 0) > 0:
                 input_devices.append((i, info['name']))
+                if info['name'] == 'pulse':
+                    pulse_device = i
 
         logger.info(f"Found {len(input_devices)} input device(s):")
         for idx, name in input_devices:
+            marker = " <-- selected" if pulse_device is not None and idx == pulse_device else ""
+            logger.info(f"  [{idx}] {name}{marker}")
+
+        # Use the PulseAudio device explicitly (not ALSA default)
+        if AUDIO_DEVICE_INDEX is None and pulse_device is not None:
+            AUDIO_DEVICE_INDEX = pulse_device
+            logger.info(f"Auto-selected PulseAudio device [{pulse_device}]")
+        elif AUDIO_DEVICE_INDEX is None:
+            logger.warning("PulseAudio device not found - using ALSA default (may be silent)")
+            logger.warning("Ensure PulseAudio is running: pulseaudio --start")
+
+        if not input_devices:
+            logger.warning("NO INPUT AUDIO DEVICES FOUND!")
+            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
+            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
+            self.mqtt.publish_mic_status('no_device',
+                'No audio input devices found - check snd-aloop and iphone-audio-stream service')
             logger.info(f"  [{idx}] {name}")
 
         logger.info(f"Using PulseAudio default source (AUDIO_DEVICE_INDEX={AUDIO_DEVICE_INDEX})")
