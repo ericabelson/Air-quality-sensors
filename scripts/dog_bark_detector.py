@@ -529,6 +529,17 @@ class MQTTPublisher:
         logger.warning("Disconnected from MQTT broker")
         self.connected = False
 
+    @staticmethod
+    def _convert_numpy(obj):
+        """Convert numpy types to native Python for JSON serialization"""
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
     def publish(self, topic, payload):
         """Publish message to MQTT topic"""
         if not self.connected:
@@ -537,7 +548,7 @@ class MQTTPublisher:
 
         try:
             if isinstance(payload, dict):
-                payload = json.dumps(payload)
+                payload = json.dumps(payload, default=self._convert_numpy)
             self.client.publish(topic, payload)
         except Exception as e:
             logger.error(f"Error publishing to MQTT: {e}")
