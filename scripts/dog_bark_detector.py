@@ -60,8 +60,12 @@ except ImportError:
 # Auto-detect ALSA loopback device at startup (see _find_loopback_device)
 AUDIO_DEVICE_INDEX = None  # Set dynamically; None = default device, or specify device number
 PREFERRED_DEVICE_NAME = "Loopback"  # Look for this in device name for auto-detection
-SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz)
+DEVICE_SAMPLE_RATE = 48000  # Hz - match the ALSA loopback device rate
+YAMNET_SAMPLE_RATE = 16000  # Hz - YAMNet requires 16kHz
+SAMPLE_RATE = YAMNET_SAMPLE_RATE  # Used for dB calculation and YAMNet inference
 CHANNELS = 1  # Mono
+# Read enough samples at device rate to get 0.975s of audio (YAMNet's window)
+DEVICE_CHUNK_SIZE = int(15600 * DEVICE_SAMPLE_RATE / YAMNET_SAMPLE_RATE)  # 46800 at 48kHz
 CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
@@ -700,12 +704,13 @@ class DogBarkDetector:
             self.stream = self.audio.open(
                 format=pyaudio.paInt16,
                 channels=CHANNELS,
-                rate=SAMPLE_RATE,
+                rate=DEVICE_SAMPLE_RATE,
                 input=True,
                 input_device_index=AUDIO_DEVICE_INDEX,
-                frames_per_buffer=CHUNK_SIZE
+                frames_per_buffer=DEVICE_CHUNK_SIZE
             )
-            logger.info(f"Audio stream opened (sample rate: {SAMPLE_RATE} Hz)")
+            logger.info(f"Audio stream opened (device rate: {DEVICE_SAMPLE_RATE} Hz, "
+                         f"YAMNet rate: {YAMNET_SAMPLE_RATE} Hz)")
         except Exception as e:
             logger.error(f"Error opening audio stream: {e}")
             logger.error("Available audio devices:")
@@ -729,9 +734,16 @@ class DogBarkDetector:
 
         while True:
             try:
-                # Read audio chunk
-                audio_bytes = self.stream.read(CHUNK_SIZE, exception_on_overflow=False)
-                audio_data = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+                # Read audio chunk at device sample rate
+                audio_bytes = self.stream.read(DEVICE_CHUNK_SIZE, exception_on_overflow=False)
+                audio_data_raw = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+
+                # Downsample from device rate to YAMNet rate (e.g. 48kHz -> 16kHz)
+                if DEVICE_SAMPLE_RATE != YAMNET_SAMPLE_RATE:
+                    ratio = DEVICE_SAMPLE_RATE // YAMNET_SAMPLE_RATE
+                    audio_data = audio_data_raw[::ratio]  # Simple decimation (48k/16k = take every 3rd sample)
+                else:
+                    audio_data = audio_data_raw
 
                 # Mark that we received audio successfully
                 self.last_audio_received = datetime.now()
