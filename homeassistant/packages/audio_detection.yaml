@@ -138,6 +138,7 @@ mqtt:
       payload_off: false
       device_class: sound
       icon: mdi:dog
+      off_delay: 30
 
     # Microphone Online (Binary)
     - name: "Microphone Online"

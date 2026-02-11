@@ -65,17 +65,17 @@ CHANNELS = 1  # Mono
 CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
-DOG_BARK_CONFIDENCE_THRESHOLD = 0.25  # Lowered from 0.70 for debugging - raise after testing
+DOG_BARK_CONFIDENCE_THRESHOLD = 0.40  # Balanced for iPhone audio quality (8kHz G.711)
 DOG_BARK_CLASS_NAMES = [
-    "Animal",
-    "Domestic animals, pets",
     "Dog",
     "Bark",
     "Bow-wow",
     "Growling",
     "Whimper",
-    "Howl"
+    "Howl",
+    "Domestic animals, pets",
 ]
+BARK_COOLDOWN_SECONDS = 30  # Publish "not barking" after this many seconds of no bark
 
 # Decibel Settings
 # Audio is raw int16 samples (0-32768), not calibrated Pascals.
@@ -630,6 +630,7 @@ class DogBarkDetector:
         self.last_bark_time = None
         self.last_bark_confidence = 0
         self.last_bark_decibels = 0
+        self.bark_active = False  # True when actively barking, False after cooldown
 
         # Microphone health monitoring
         self.last_audio_received = datetime.now()
@@ -823,8 +824,13 @@ class DogBarkDetector:
                     )
                     self.last_mqtt_update = datetime.now()
 
-                # Classify audio
-                predictions = self.classifier.classify_audio(audio_data)
+                # Skip classification if audio is too quiet (likely silence/no input)
+                MIN_CLASSIFY_DB = 35
+                if decibels <= MIN_CLASSIFY_DB:
+                    predictions = []
+                else:
+                    # Classify audio
+                    predictions = self.classifier.classify_audio(audio_data)
 
                 # Log top predictions periodically for debugging
                 if predictions and int(time.time()) % 5 == 0:
@@ -836,6 +842,7 @@ class DogBarkDetector:
                 is_bark, confidence, class_name = self.classifier.is_dog_bark(predictions)
 
                 if is_bark:
+                    self.bark_active = True
                     # Create bark event
                     event = BarkEvent(datetime.now(), confidence, decibels)
                     self.all_events.append(event)
@@ -859,6 +866,20 @@ class DogBarkDetector:
                     # Record audio
                     if not self.recorder.is_recording:
                         self.recorder.start_recording()
+
+                # Bark cooldown - publish "not barking" when barking stops
+                elif self.bark_active and self.last_bark_time:
+                    time_since_bark = (datetime.now() - self.last_bark_time).total_seconds()
+                    if time_since_bark > BARK_COOLDOWN_SECONDS:
+                        self.bark_active = False
+                        self.mqtt.publish(MQTT_TOPIC_BARK, {
+                            'timestamp': datetime.now().isoformat(),
+                            'detected': False,
+                            'confidence': 0.0,
+                            'decibels': float(decibels),
+                            'class': ''
+                        })
+                        logger.info("Bark cooldown: published 'not barking' state")
 
                 # Add to recording buffer if recording
                 if self.recorder.is_recording:
