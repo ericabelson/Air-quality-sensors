@@ -57,13 +57,15 @@ except ImportError:
 # ============================================================================
 
 # Audio Settings
-AUDIO_DEVICE_INDEX = None  # None = default device, or specify device number
-SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz)
+# Use PulseAudio (default device) so both this detector and BirdNET can share
+# the same loopback source. PulseAudio handles resampling from 48kHz to 16kHz.
+AUDIO_DEVICE_INDEX = None  # None = PulseAudio default source (shared with BirdNET)
+SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz; PulseAudio resamples from device rate)
 CHANNELS = 1  # Mono
 CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
-DOG_BARK_CONFIDENCE_THRESHOLD = 0.70  # 70% confidence minimum
+DOG_BARK_CONFIDENCE_THRESHOLD = 0.25  # Lowered from 0.70 for debugging - raise after testing
 DOG_BARK_CLASS_NAMES = [
     "Animal",
     "Domestic animals, pets",
@@ -76,9 +78,18 @@ DOG_BARK_CLASS_NAMES = [
 ]
 
 # Decibel Settings
-REFERENCE_PRESSURE = 20e-6  # 20 micropascals (standard reference for dB SPL)
+# Audio is raw int16 samples (0-32768), not calibrated Pascals.
+# We use dBFS (full-scale) + offset to approximate SPL.
+# 90 dB offset maps: quiet room ~35 dB, talking ~60 dB, loud bark ~80 dB
+DBFS_OFFSET = 90  # dBFS-to-SPL approximation offset
+INT16_MAX = 32768.0  # Full-scale reference for 16-bit audio
 MIN_DB = 30  # Minimum decibel threshold to consider
 MAX_DB = 120  # Maximum decibel (for safety)
+
+# Silence Detection Settings
+SILENCE_THRESHOLD_DB = 32  # dB level below which audio is considered silence
+SILENCE_ALERT_SECONDS = 60  # Alert after this many seconds of continuous silence
+SILENCE_CHECK_INTERVAL = 30  # Check for silence every N seconds
 
 # Event Grouping Settings
 GAP_5MIN = 300  # 5 minutes in seconds
@@ -227,16 +238,23 @@ class DogBarkClassifier:
         logger.info(f"Loaded {len(self.class_names)} class labels")
 
     def _load_labels(self, labels_path):
-        """Load YAMNet class labels from CSV"""
+        """Load YAMNet class labels from CSV.
+
+        The yamnet_class_map.csv has columns: index, mid, display_name
+        We need the display_name (column 2), not the mid (column 1).
+        """
+        import csv
         class_names = []
         try:
             with open(labels_path, 'r') as f:
-                # Skip header
-                next(f)
-                for line in f:
-                    parts = line.strip().split(',')
-                    if len(parts) >= 2:
-                        class_names.append(parts[1].strip('"'))
+                reader = csv.reader(f)
+                next(reader)  # Skip header
+                for row in reader:
+                    if len(row) >= 3:
+                        class_names.append(row[2].strip())
+                    elif len(row) >= 2:
+                        class_names.append(row[1].strip())
+            logger.info(f"Sample labels: {class_names[:5]}")
             return class_names
         except Exception as e:
             logger.error(f"Error loading labels: {e}")
@@ -324,13 +342,17 @@ class DogBarkClassifier:
 
 def calculate_decibels(audio_data):
     """
-    Calculate decibel level (dB SPL) from audio data
+    Calculate approximate dB SPL from raw int16 audio samples.
+
+    Uses dBFS (decibels relative to full-scale) plus an offset to
+    approximate real-world SPL. Without a calibrated microphone,
+    absolute values are estimates, but relative changes are accurate.
 
     Args:
-        audio_data: numpy array of audio samples
+        audio_data: numpy array of int16 audio samples (as float32)
 
     Returns:
-        float: decibel level
+        float: approximate decibel level (SPL)
     """
     # Calculate RMS (Root Mean Square) amplitude
     rms = np.sqrt(np.mean(audio_data**2))
@@ -339,9 +361,11 @@ def calculate_decibels(audio_data):
     if rms < 1e-10:
         return MIN_DB
 
-    # Convert to decibels SPL (Sound Pressure Level)
-    # dB = 20 * log10(rms / reference)
-    db = 20 * np.log10(rms / REFERENCE_PRESSURE)
+    # Normalize to 0-1 range (int16 full scale = 32768)
+    # Then convert to dBFS and add offset to approximate SPL
+    # dBFS = 20 * log10(rms / 32768)  → range: -90 to 0
+    # dB SPL ≈ dBFS + 90              → range: ~0 to 90
+    db = 20 * np.log10(rms / INT16_MAX) + DBFS_OFFSET
 
     # Clamp to reasonable range
     db = max(MIN_DB, min(MAX_DB, db))
@@ -505,6 +529,17 @@ class MQTTPublisher:
         logger.warning("Disconnected from MQTT broker")
         self.connected = False
 
+    @staticmethod
+    def _convert_numpy(obj):
+        """Convert numpy types to native Python for JSON serialization"""
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
     def publish(self, topic, payload):
         """Publish message to MQTT topic"""
         if not self.connected:
@@ -513,7 +548,7 @@ class MQTTPublisher:
 
         try:
             if isinstance(payload, dict):
-                payload = json.dumps(payload)
+                payload = json.dumps(payload, default=self._convert_numpy)
             self.client.publish(topic, payload)
         except Exception as e:
             logger.error(f"Error publishing to MQTT: {e}")
@@ -602,6 +637,11 @@ class DogBarkDetector:
         self.consecutive_read_errors = 0
         self.mic_status = 'starting'
 
+        # Silence detection - detect when mic is connected but getting no real audio
+        self.silence_start_time = None
+        self.last_silence_check = datetime.now()
+        self.silence_alerted = False
+
         # Statistics
         self.daily_stats = {
             'date': datetime.now().strftime('%Y-%m-%d'),
@@ -618,9 +658,50 @@ class DogBarkDetector:
 
         logger.info("Initialization complete!")
 
+    def _find_audio_device(self):
+        """Find the ALSA loopback capture device for direct access.
+
+        Uses direct ALSA hw: device (not PulseAudio) for reliable audio.
+        Finds the loopback capture side (hw:X,1) that receives audio from
+        the iPhone FFmpeg stream writing to (hw:X,0).
+        """
+        global AUDIO_DEVICE_INDEX
+        device_count = self.audio.get_device_count()
+        input_devices = []
+        loopback_capture = None
+
+        for i in range(device_count):
+            info = self.audio.get_device_info_by_index(i)
+            if info.get('maxInputChannels', 0) > 0:
+                input_devices.append((i, info['name']))
+                if ('loopback' in info['name'].lower()
+                        and 'hw:' in info['name'] and ',1)' in info['name']):
+                    loopback_capture = (i, info['name'])
+
+        logger.info(f"Found {len(input_devices)} input device(s):")
+        for idx, name in input_devices:
+            marker = " <-- selected" if loopback_capture and idx == loopback_capture[0] else ""
+            logger.info(f"  [{idx}] {name}{marker}")
+
+        if loopback_capture and AUDIO_DEVICE_INDEX is None:
+            AUDIO_DEVICE_INDEX = loopback_capture[0]
+            logger.info(f"Auto-selected loopback capture [{AUDIO_DEVICE_INDEX}]: {loopback_capture[1]}")
+        elif AUDIO_DEVICE_INDEX is None:
+            logger.warning("No loopback capture device found - using default (may be silent)")
+
+        if not input_devices:
+            logger.warning("NO INPUT AUDIO DEVICES FOUND!")
+            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
+            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
+            self.mqtt.publish_mic_status('no_device',
+                'No audio input devices found - check snd-aloop and iphone-audio-stream service')
+
     def start(self):
         """Start the detection system"""
         logger.info("Starting dog bark detection...")
+
+        # Find loopback device
+        self._find_audio_device()
 
         # Open audio stream
         try:
@@ -639,6 +720,7 @@ class DogBarkDetector:
             for i in range(self.audio.get_device_count()):
                 info = self.audio.get_device_info_by_index(i)
                 logger.error(f"  {i}: {info['name']}")
+            self.mqtt.publish_mic_status('error', f'Failed to open audio stream: {e}')
             raise
 
         # Start detection loop
@@ -655,7 +737,7 @@ class DogBarkDetector:
 
         while True:
             try:
-                # Read audio chunk
+                # Read audio chunk (PulseAudio resamples to 16kHz for us)
                 audio_bytes = self.stream.read(CHUNK_SIZE, exception_on_overflow=False)
                 audio_data = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
 
@@ -675,6 +757,53 @@ class DogBarkDetector:
                 # Publish decibels (throttled to every second)
                 if int(time.time()) % 1 == 0:
                     self.mqtt.publish_decibels(decibels)
+
+                # Silence detection - catch the case where stream is open but reading dead air
+                if decibels <= SILENCE_THRESHOLD_DB:
+                    if self.silence_start_time is None:
+                        self.silence_start_time = datetime.now()
+                    silence_duration = (datetime.now() - self.silence_start_time).total_seconds()
+
+                    # Periodic silence check to avoid log spam
+                    time_since_silence_check = (datetime.now() - self.last_silence_check).total_seconds()
+                    if silence_duration >= SILENCE_ALERT_SECONDS and time_since_silence_check >= SILENCE_CHECK_INTERVAL:
+                        self.last_silence_check = datetime.now()
+                        if not self.silence_alerted:
+                            self.silence_alerted = True
+                            self.mic_status = 'silence'
+                            logger.warning(
+                                f"SILENCE DETECTED: Audio stuck at {decibels:.0f} dB for "
+                                f"{int(silence_duration)}s. No real audio is being captured!"
+                            )
+                            logger.warning("Possible causes:")
+                            logger.warning("  - ALSA loopback not loaded (sudo modprobe snd-aloop)")
+                            logger.warning("  - iphone-audio-stream service not running")
+                            logger.warning("  - iPhone Periscope HD app not streaming")
+                            logger.warning("  - Wrong audio device selected")
+                            self.mqtt.publish_mic_status(
+                                'silence',
+                                f'No real audio - constant {decibels:.0f} dB for {int(silence_duration)}s. '
+                                f'Check: snd-aloop module, iphone-audio-stream service, Periscope HD app'
+                            )
+                        elif int(silence_duration) % 300 == 0:
+                            # Re-alert every 5 minutes of continuous silence
+                            logger.warning(
+                                f"Still silent: {int(silence_duration)}s of silence "
+                                f"({int(silence_duration / 60)} min)"
+                            )
+                            self.mqtt.publish_mic_status(
+                                'silence',
+                                f'Continuous silence for {int(silence_duration / 60)} min. '
+                                f'No audio input device providing real audio.'
+                            )
+                else:
+                    # Real audio detected - reset silence tracking
+                    if self.silence_alerted:
+                        logger.info(f"Audio restored - silence ended after "
+                                    f"{int((datetime.now() - self.silence_start_time).total_seconds())}s")
+                        self.mqtt.publish_mic_status('online', 'Real audio detected - silence ended')
+                    self.silence_start_time = None
+                    self.silence_alerted = False
 
                 # Check microphone health (every 30 seconds)
                 time_since_audio = (datetime.now() - self.last_audio_received).total_seconds()
@@ -696,6 +825,12 @@ class DogBarkDetector:
 
                 # Classify audio
                 predictions = self.classifier.classify_audio(audio_data)
+
+                # Log top predictions periodically for debugging
+                if predictions and int(time.time()) % 5 == 0:
+                    top3 = predictions[:3]
+                    top_str = ", ".join(f"{p['class']}:{p['confidence']:.3f}" for p in top3)
+                    logger.info(f"[DEBUG] dB={decibels:.1f} top3=[{top_str}]")
 
                 # Check for dog bark
                 is_bark, confidence, class_name = self.classifier.is_dog_bark(predictions)
