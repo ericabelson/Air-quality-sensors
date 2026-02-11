@@ -20,7 +20,10 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="/var/log/air-quality"
 
-mkdir -p "${LOG_DIR}"
+# Fix log directory permissions if running as non-root
+if [ ! -w "${LOG_DIR}" ]; then
+    sudo chmod 777 "${LOG_DIR}" 2>/dev/null || mkdir -p "${LOG_DIR}"
+fi
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}STARTING DETECTORS${NC}"
