@@ -150,6 +150,17 @@ mqtt:
       device_class: connectivity
       icon: mdi:microphone
 
+    # Monitor Active - CRITICAL: distinguishes "quiet" from "not recording"
+    # When this is OFF, any apparent "quiet" data is INVALID (equipment not monitoring)
+    - name: "Bark Monitor Active"
+      unique_id: bark_monitor_active
+      state_topic: "audio/monitor_active"
+      value_template: "{{ value_json.active }}"
+      payload_on: true
+      payload_off: false
+      device_class: running
+      icon: mdi:monitor-eye
+
 # ============================================================================
 # TEMPLATE SENSORS
 # ============================================================================
@@ -157,17 +168,35 @@ mqtt:
 template:
   - sensor:
       # Bark Duration Calculator (minutes of barking per hour)
+      # Uses actual barking time from history_stats (in hours) divided by elapsed hours
       - unique_id: bark_minutes_per_hour
         name: "Barking Minutes Per Hour"
         unit_of_measurement: "min/hr"
         icon: mdi:clock-outline
         state: >
-          {% set total_barks = states('sensor.total_barks_today') | int %}
-          {% set hours_today = now().hour + 1 %}
-          {% if hours_today > 0 and total_barks > 0 %}
-            {{ ((total_barks * 2) / hours_today) | round(1) }}
+          {% set barking_hours = states('sensor.barking_time_today') | float(0) %}
+          {% set barking_minutes = barking_hours * 60 %}
+          {% set hours_today = now().hour + (now().minute / 60) %}
+          {% if hours_today > 0.1 and barking_minutes > 0 %}
+            {{ (barking_minutes / hours_today) | round(1) }}
           {% else %}
             0
+          {% endif %}
+
+      # Display-friendly decibel level (shows 0 for ambient/silence instead of raw 30)
+      - unique_id: display_decibels
+        name: "Display Sound Level"
+        unit_of_measurement: "dB"
+        icon: mdi:volume-high
+        state: >
+          {% set db = states('sensor.audio_decibels') | float(0) %}
+          {% set mic = states('sensor.microphone_status') %}
+          {% if mic != 'online' %}
+            0
+          {% elif db <= 35 %}
+            0
+          {% else %}
+            {{ db | round(1) }}
           {% endif %}
 
       # Decibel Status (Color Coded)
@@ -203,23 +232,31 @@ template:
           {% endif %}
 
       # Current Quiet Streak (time since last bark)
+      # Shows "NOT MONITORING" when detector is offline to avoid conflating downtime with quiet
       - unique_id: quiet_streak
         name: "Current Quiet Streak"
         icon: mdi:timer-outline
         state: >
-          {% set last_bark = as_timestamp(states.binary_sensor.dog_barking.last_changed) %}
-          {% set now = as_timestamp(now()) %}
-          {% if last_bark %}
-            {% set diff = (now - last_bark) | int %}
-            {% set hours = (diff // 3600) %}
-            {% set minutes = ((diff % 3600) // 60) %}
-            {% if hours > 0 %}
-              {{ hours }}h {{ minutes }}m
-            {% else %}
-              {{ minutes }}m
-            {% endif %}
+          {% if is_state('binary_sensor.bark_monitor_active', 'off') %}
+            NOT MONITORING
           {% else %}
-            Unknown
+            {% set last_bark = as_timestamp(states.binary_sensor.dog_barking.last_changed) %}
+            {% set now_ts = as_timestamp(now()) %}
+            {% if last_bark %}
+              {% set diff = (now_ts - last_bark) | int %}
+              {% set days = (diff // 86400) %}
+              {% set hours = ((diff % 86400) // 3600) %}
+              {% set minutes = ((diff % 3600) // 60) %}
+              {% if days > 0 %}
+                {{ days }}d {{ hours }}h {{ minutes }}m
+              {% elif hours > 0 %}
+                {{ hours }}h {{ minutes }}m
+              {% else %}
+                {{ minutes }}m
+              {% endif %}
+            {% else %}
+              Unknown
+            {% endif %}
           {% endif %}
 
 # ============================================================================
@@ -245,6 +282,23 @@ template:
   - platform: history_stats
     name: "Barking Percentage Today"
     entity_id: binary_sensor.dog_barking
+    state: 'on'
+    type: ratio
+    start: '{{ now().replace(hour=0, minute=0, second=0) }}'
+    end: '{{ now() }}'
+
+  # Monitor uptime today - how much of the day the detector was actually running
+  - platform: history_stats
+    name: "Monitor Uptime Today"
+    entity_id: binary_sensor.bark_monitor_active
+    state: 'on'
+    type: time
+    start: '{{ now().replace(hour=0, minute=0, second=0) }}'
+    end: '{{ now() }}'
+
+  - platform: history_stats
+    name: "Monitor Uptime Percentage Today"
+    entity_id: binary_sensor.bark_monitor_active
     state: 'on'
     type: ratio
     start: '{{ now().replace(hour=0, minute=0, second=0) }}'
@@ -308,14 +362,18 @@ group:
     icon: mdi:dog
     entities:
       - binary_sensor.dog_barking
+      - binary_sensor.bark_monitor_active
       - sensor.dog_bark_confidence
       - sensor.dog_bark_class
       - sensor.audio_decibels
+      - sensor.display_sound_level
       - sensor.total_barks_today
       - sensor.max_decibels_today
       - sensor.barking_time_today
       - sensor.bark_event_status
       - sensor.quiet_streak
+      - sensor.monitor_uptime_today
+      - sensor.monitor_uptime_percentage_today
 
   bird_detection_sensors:
     name: Bird Detection

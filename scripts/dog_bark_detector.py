@@ -105,6 +105,7 @@ MQTT_TOPIC_STATUS = "audio/detector_status"
 MQTT_TOPIC_STATS = "audio/bark_stats"
 MQTT_TOPIC_LAST_DETECTION = "audio/last_detection"
 MQTT_TOPIC_MIC_STATUS = "audio/microphone_status"
+MQTT_TOPIC_MONITOR_ACTIVE = "audio/monitor_active"  # Whether detector is actively monitoring
 
 # File Paths
 BASE_DIR = os.path.expanduser("~/audio_detection")
@@ -130,8 +131,13 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # Storage Management
-MAX_STORAGE_PERCENT = 95  # Use up to 95% of 1TB before cleanup
+MAX_RECORDING_MB = 2000  # Maximum MB for audio recordings (FIFO: oldest deleted first)
 AUDIO_QUALITY = "32k"  # Very low quality MP3 for minimal size
+
+# Raw Event Log - every individual bark detection with timestamp
+RAW_EVENTS_CSV = os.path.join(DATA_DIR, "bark_events_raw.csv")
+# Uptime/Downtime Log - tracks when the monitor starts, stops, and gaps
+UPTIME_LOG_CSV = os.path.join(DATA_DIR, "monitor_uptime.csv")
 
 # Create directories if they don't exist
 for directory in [LOG_DIR, DATA_DIR, RECORDING_DIR]:
@@ -389,7 +395,7 @@ class AudioRecorder:
         self.last_cleanup_check = datetime.now()
 
     def check_storage_and_cleanup(self):
-        """Check storage usage and delete oldest files if over threshold"""
+        """Delete oldest recordings when total exceeds MAX_RECORDING_MB"""
         # Only check every 10 minutes to reduce disk I/O
         if (datetime.now() - self.last_cleanup_check).total_seconds() < 600:
             return
@@ -397,35 +403,34 @@ class AudioRecorder:
         self.last_cleanup_check = datetime.now()
 
         try:
-            import shutil
+            # Get all MP3 files with their modification times and sizes
+            files = []
+            total_bytes = 0
+            for root, dirs, filenames in os.walk(self.recording_dir):
+                for filename in filenames:
+                    if filename.endswith('.mp3'):
+                        filepath = os.path.join(root, filename)
+                        mtime = os.path.getmtime(filepath)
+                        size = os.path.getsize(filepath)
+                        files.append((filepath, mtime, size))
+                        total_bytes += size
 
-            # Get storage stats for the mount point
-            stats = shutil.disk_usage(self.recording_dir)
-            usage_percent = (stats.used / stats.total) * 100
+            total_mb = total_bytes / (1024 * 1024)
+            max_bytes = MAX_RECORDING_MB * 1024 * 1024
 
-            if usage_percent > MAX_STORAGE_PERCENT:
-                logger.warning(f"Storage at {usage_percent:.1f}% - cleaning up old recordings")
-
-                # Get all MP3 files with their modification times
-                files = []
-                for root, dirs, filenames in os.walk(self.recording_dir):
-                    for filename in filenames:
-                        if filename.endswith('.mp3'):
-                            filepath = os.path.join(root, filename)
-                            mtime = os.path.getmtime(filepath)
-                            size = os.path.getsize(filepath)
-                            files.append((filepath, mtime, size))
+            if total_bytes > max_bytes:
+                logger.warning(f"Recordings at {total_mb:.0f} MB (limit: {MAX_RECORDING_MB} MB) - cleaning up oldest")
 
                 # Sort by modification time (oldest first)
                 files.sort(key=lambda x: x[1])
 
-                # Delete oldest files until we're under 90% usage
-                bytes_to_free = stats.total * 0.05  # Free up 5% of space
+                # Delete oldest files until under limit
                 bytes_freed = 0
                 files_deleted = 0
+                target_free = total_bytes - max_bytes + (max_bytes * 0.1)  # Free to 90% of limit
 
                 for filepath, mtime, size in files:
-                    if bytes_freed >= bytes_to_free:
+                    if bytes_freed >= target_free:
                         break
                     try:
                         os.remove(filepath)
@@ -435,6 +440,8 @@ class AudioRecorder:
                         logger.error(f"Error deleting {filepath}: {e}")
 
                 logger.info(f"Cleanup complete: deleted {files_deleted} files, freed {bytes_freed / 1024 / 1024:.1f} MB")
+            else:
+                logger.info(f"Recording storage: {total_mb:.0f} MB / {MAX_RECORDING_MB} MB ({len(files)} files)")
 
         except Exception as e:
             logger.error(f"Error during storage cleanup: {e}")
@@ -639,6 +646,12 @@ class DogBarkDetector:
         self.last_mqtt_update = datetime.now()
         self.consecutive_read_errors = 0
         self.mic_status = 'starting'
+        self.monitor_active = False  # Published to MQTT so HA knows we're running
+
+        # Initialize raw event CSV (individual bark log)
+        self._init_raw_event_csv()
+        # Log startup in uptime log
+        self._log_uptime_event('start')
 
         # Silence detection - detect when mic is connected but getting no real audio
         self.silence_start_time = None
@@ -660,6 +673,44 @@ class DogBarkDetector:
         self.stream = None
 
         logger.info("Initialization complete!")
+
+    def _init_raw_event_csv(self):
+        """Initialize raw bark event CSV with header if it doesn't exist"""
+        if not os.path.exists(RAW_EVENTS_CSV):
+            with open(RAW_EVENTS_CSV, 'w') as f:
+                f.write("timestamp,date,time,confidence,decibels,class,duration_estimate_sec\n")
+            logger.info(f"Created raw event log: {RAW_EVENTS_CSV}")
+
+    def _log_raw_bark_event(self, event, class_name):
+        """Log individual bark detection to raw CSV"""
+        try:
+            with open(RAW_EVENTS_CSV, 'a') as f:
+                ts = event.timestamp
+                # Duration estimate: each chunk is ~1 second of audio
+                f.write(f"{ts.isoformat()},{ts.strftime('%Y-%m-%d')},{ts.strftime('%H:%M:%S')},"
+                        f"{event.confidence:.3f},{event.decibels:.1f},{class_name},1\n")
+        except Exception as e:
+            logger.error(f"Error writing raw event CSV: {e}")
+
+    def _log_uptime_event(self, event_type, details=''):
+        """Log monitor start/stop/gap events to uptime CSV"""
+        try:
+            if not os.path.exists(UPTIME_LOG_CSV):
+                with open(UPTIME_LOG_CSV, 'w') as f:
+                    f.write("timestamp,event,details\n")
+            with open(UPTIME_LOG_CSV, 'a') as f:
+                f.write(f"{datetime.now().isoformat()},{event_type},{details}\n")
+            logger.info(f"Uptime event logged: {event_type} {details}")
+        except Exception as e:
+            logger.error(f"Error writing uptime log: {e}")
+
+    def _publish_monitor_active(self, active):
+        """Publish whether the monitor is actively recording"""
+        self.monitor_active = active
+        self.mqtt.publish(MQTT_TOPIC_MONITOR_ACTIVE, {
+            'active': active,
+            'timestamp': datetime.now().isoformat()
+        })
 
     def _find_audio_device(self):
         """Find the ALSA loopback capture device for direct access.
@@ -726,6 +777,9 @@ class DogBarkDetector:
             self.mqtt.publish_mic_status('error', f'Failed to open audio stream: {e}')
             raise
 
+        # Mark monitor as actively recording
+        self._publish_monitor_active(True)
+
         # Start detection loop
         try:
             self._detection_loop()
@@ -752,6 +806,9 @@ class DogBarkDetector:
                 if self.mic_status != 'online':
                     self.mic_status = 'online'
                     self.mqtt.publish_mic_status('online', 'Audio stream restored')
+                    if not self.monitor_active:
+                        self._publish_monitor_active(True)
+                        self._log_uptime_event('resume', 'Audio stream restored')
                     logger.info("Microphone back online")
 
                 # Calculate decibels
@@ -774,6 +831,8 @@ class DogBarkDetector:
                         if not self.silence_alerted:
                             self.silence_alerted = True
                             self.mic_status = 'silence'
+                            self._publish_monitor_active(False)
+                            self._log_uptime_event('silence', f'No real audio for {int(silence_duration)}s')
                             logger.warning(
                                 f"SILENCE DETECTED: Audio stuck at {decibels:.0f} dB for "
                                 f"{int(silence_duration)}s. No real audio is being captured!"
@@ -813,6 +872,8 @@ class DogBarkDetector:
                 if time_since_audio > 30:
                     if self.mic_status != 'no_data':
                         self.mic_status = 'no_data'
+                        self._publish_monitor_active(False)
+                        self._log_uptime_event('no_data', f'No audio for {int(time_since_audio)}s')
                         self.mqtt.publish_mic_status('no_data', f'No audio for {int(time_since_audio)}s')
                         logger.error(f"Microphone offline - no audio data for {int(time_since_audio)} seconds")
 
@@ -849,6 +910,9 @@ class DogBarkDetector:
                     self.all_events.append(event)
 
                     logger.info(f"🐕 DOG BARK DETECTED - Confidence: {confidence:.2f} - Decibels: {decibels:.1f}dB - Class: {class_name}")
+
+                    # Log to raw event CSV (permanent record)
+                    self._log_raw_bark_event(event, class_name)
 
                     # Publish to MQTT (real-time)
                     self.mqtt.publish_bark_event(event, True, class_name)
@@ -903,6 +967,8 @@ class DogBarkDetector:
                 if self.consecutive_read_errors > 10:
                     if self.mic_status != 'error':
                         self.mic_status = 'error'
+                        self._publish_monitor_active(False)
+                        self._log_uptime_event('error', f'Consecutive read errors: {self.consecutive_read_errors}')
                         self.mqtt.publish_mic_status('error', f'Consecutive read errors: {self.consecutive_read_errors}')
                         logger.error("Too many audio read errors - microphone may be offline")
 
@@ -991,6 +1057,10 @@ class DogBarkDetector:
     def stop(self):
         """Stop the detection system"""
         logger.info("Stopping detection system...")
+
+        # Mark monitor as inactive and log shutdown
+        self._publish_monitor_active(False)
+        self._log_uptime_event('stop')
 
         # Save final groups
         if self.current_group_5min:
