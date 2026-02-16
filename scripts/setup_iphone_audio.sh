@@ -156,13 +156,18 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=pi
+User=${USER}
 Restart=always
 RestartSec=10
 
-# Capture iPhone RTSP audio, convert to 16kHz mono PCM, pipe to ALSA loopback
+# Capture iPhone RTSP audio, convert to 16kHz mono PCM, pipe to ALSA loopback.
+# -stimeout 5000000: drop connection after 5s of no data (microseconds)
+# -rw_timeout 5000000: read/write timeout - forces FFmpeg to exit on stale stream
+# Systemd Restart=always will restart it, reconnecting to the iPhone.
 ExecStart=/usr/bin/ffmpeg \\
     -rtsp_transport udp \\
+    -stimeout 5000000 \\
+    -rw_timeout 5000000 \\
     -i ${RTSP_URL} \\
     -vn \\
     -acodec pcm_s16le \\
@@ -170,6 +175,10 @@ ExecStart=/usr/bin/ffmpeg \\
     -ac 1 \\
     -f alsa \\
     ${PLAYBACK_DEVICE}
+
+# Watchdog: restart if FFmpeg hangs (no exit but no data)
+WatchdogSec=120
+NotifyAccess=all
 
 StandardOutput=journal
 StandardError=journal
