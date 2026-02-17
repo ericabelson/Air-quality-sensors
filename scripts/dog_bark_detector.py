@@ -550,6 +550,18 @@ class MQTTPublisher:
             return obj.tolist()
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
+    # Topics whose last value should be retained by the MQTT broker so that
+    # Home Assistant sensors recover immediately after an HA restart without
+    # waiting for the next publish from the detector.
+    RETAINED_TOPICS = {
+        MQTT_TOPIC_BARK,
+        MQTT_TOPIC_STATUS,
+        MQTT_TOPIC_STATS,
+        MQTT_TOPIC_LAST_DETECTION,
+        MQTT_TOPIC_MIC_STATUS,
+        MQTT_TOPIC_MONITOR_ACTIVE,
+    }
+
     def publish(self, topic, payload):
         """Publish message to MQTT topic"""
         if not self.connected:
@@ -559,7 +571,8 @@ class MQTTPublisher:
         try:
             if isinstance(payload, dict):
                 payload = json.dumps(payload, default=self._convert_numpy)
-            self.client.publish(topic, payload)
+            retain = topic in self.RETAINED_TOPICS
+            self.client.publish(topic, payload, retain=retain)
         except Exception as e:
             logger.error(f"Error publishing to MQTT: {e}")
 

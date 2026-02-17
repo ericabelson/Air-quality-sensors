@@ -279,7 +279,11 @@ template:
 # ============================================================================
 # HISTORY STATS - Track Total Barking Time
 # ============================================================================
+# NOTE: history_stats is a sensor platform — it MUST be under the top-level
+# "sensor:" key, NOT under "template:".  Nesting it under template: silently
+# prevents the sensors from being created.
 
+sensor:
   - platform: history_stats
     name: "Barking Time Today"
     entity_id: binary_sensor.dog_barking
