@@ -105,7 +105,7 @@ print_info "Installing birdnetlib (includes BirdNET-Analyzer)..."
 pip install birdnetlib -q
 
 print_info "Ensuring other audio dependencies are present..."
-pip install pyaudio paho-mqtt numpy -q
+pip install pyaudio paho-mqtt numpy librosa -q
 
 print_success "Python packages installed"
 
