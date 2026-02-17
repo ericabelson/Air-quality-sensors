@@ -1,10 +1,10 @@
 #!/bin/bash
 ###############################################################################
-# Fix FFmpeg Service - Add timeout so it auto-restarts on stream drops
-# =====================================================================
-# The current iphone-audio-stream service hangs forever when the iPhone
-# stops streaming (Periscope HD closed, phone locked, etc). This adds
-# timeouts so FFmpeg exits and systemd restarts it automatically.
+# Fix FFmpeg Service - Update for ffmpeg 7.x compatibility
+# =========================================================
+# Updates the iphone-audio-stream service to work with ffmpeg 7.x which
+# removed the -stimeout and -rw_timeout options. The service relies on
+# systemd Restart=always for auto-recovery on stream drops.
 #
 # Usage:  sudo bash fix_ffmpeg_service.sh
 ###############################################################################
@@ -32,6 +32,8 @@ echo "Loopback card: $LOOPBACK_CARD"
 echo ""
 
 # Write the updated service file
+# Note: -stimeout and -rw_timeout were removed in ffmpeg 7.x
+# Systemd Restart=always handles recovery on stream drops.
 sudo tee /etc/systemd/system/iphone-audio-stream.service > /dev/null << EOF
 [Unit]
 Description=iPhone Periscope HD Audio Stream
@@ -45,14 +47,9 @@ Restart=always
 RestartSec=10
 
 # Capture iPhone RTSP audio, convert to 16kHz mono PCM, pipe to ALSA loopback.
-# -timeout 5000000: RTSP connection timeout after 5s (in microseconds)
-#   (replaces -stimeout which was removed in ffmpeg 7.x)
-# -rw_timeout 5000000: read/write timeout - forces FFmpeg to exit on stale stream
-# When FFmpeg exits due to timeout, systemd Restart=always brings it back.
+# When FFmpeg exits (stream drop, network error), systemd Restart=always brings it back.
 ExecStart=/usr/bin/ffmpeg \\
     -rtsp_transport udp \\
-    -timeout 5000000 \\
-    -rw_timeout 5000000 \\
     -i rtsp://${IPHONE_IP}:8554/live.sdp \\
     -vn \\
     -acodec pcm_s16le \\

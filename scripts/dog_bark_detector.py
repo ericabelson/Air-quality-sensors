@@ -713,42 +713,33 @@ class DogBarkDetector:
         })
 
     def _find_audio_device(self):
-        """Find the ALSA loopback capture device for direct access.
+        """Log available audio devices for diagnostics.
 
-        Uses direct ALSA hw: device (not PulseAudio) for reliable audio.
-        Finds the loopback capture side (hw:X,1) that receives audio from
-        the iPhone FFmpeg stream writing to (hw:X,0).
+        Uses PulseAudio default source (AUDIO_DEVICE_INDEX=None) so both
+        this detector and BirdNET can share the same loopback audio.
+        PulseAudio is the sole ALSA consumer of hw:X,1 and handles
+        fan-out to multiple readers.
         """
-        global AUDIO_DEVICE_INDEX
         device_count = self.audio.get_device_count()
         input_devices = []
-        loopback_capture = None
 
         for i in range(device_count):
             info = self.audio.get_device_info_by_index(i)
             if info.get('maxInputChannels', 0) > 0:
                 input_devices.append((i, info['name']))
-                if ('loopback' in info['name'].lower()
-                        and 'hw:' in info['name'] and ',1)' in info['name']):
-                    loopback_capture = (i, info['name'])
 
         logger.info(f"Found {len(input_devices)} input device(s):")
         for idx, name in input_devices:
-            marker = " <-- selected" if loopback_capture and idx == loopback_capture[0] else ""
-            logger.info(f"  [{idx}] {name}{marker}")
-
-        if loopback_capture and AUDIO_DEVICE_INDEX is None:
-            AUDIO_DEVICE_INDEX = loopback_capture[0]
-            logger.info(f"Auto-selected loopback capture [{AUDIO_DEVICE_INDEX}]: {loopback_capture[1]}")
-        elif AUDIO_DEVICE_INDEX is None:
-            logger.warning("No loopback capture device found - using default (may be silent)")
+            logger.info(f"  [{idx}] {name}")
+        logger.info("Using PulseAudio default source (shared with BirdNET)")
 
         if not input_devices:
             logger.warning("NO INPUT AUDIO DEVICES FOUND!")
             logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
             logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
+            logger.warning("  - Start PulseAudio: pulseaudio --start")
             self.mqtt.publish_mic_status('no_device',
-                'No audio input devices found - check snd-aloop and iphone-audio-stream service')
+                'No audio input devices found - check snd-aloop, PulseAudio, and iphone-audio-stream')
 
     def start(self):
         """Start the detection system"""
