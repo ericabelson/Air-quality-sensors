@@ -45,12 +45,13 @@ Restart=always
 RestartSec=10
 
 # Capture iPhone RTSP audio, convert to 16kHz mono PCM, pipe to ALSA loopback.
-# -stimeout 5000000: socket timeout after 5s of no data (in microseconds)
+# -timeout 5000000: RTSP connection timeout after 5s (in microseconds)
+#   (replaces -stimeout which was removed in ffmpeg 7.x)
 # -rw_timeout 5000000: read/write timeout - forces FFmpeg to exit on stale stream
 # When FFmpeg exits due to timeout, systemd Restart=always brings it back.
 ExecStart=/usr/bin/ffmpeg \\
     -rtsp_transport udp \\
-    -stimeout 5000000 \\
+    -timeout 5000000 \\
     -rw_timeout 5000000 \\
     -i rtsp://${IPHONE_IP}:8554/live.sdp \\
     -vn \\
