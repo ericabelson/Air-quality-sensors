@@ -6,6 +6,15 @@
 # audio_detection virtualenv, downloads the model, creates the systemd
 # service, and verifies everything works.
 #
+# Key design decisions:
+#   - Uses ai-edge-litert (~12 MB) instead of tensorflow (~260 MB)
+#     because tflite-runtime has no Python 3.13 wheel and tensorflow
+#     is too large for most Pis.
+#   - Creates a tflite_runtime shim so birdnetlib's imports work
+#     transparently with ai-edge-litert.
+#   - Checks disk space before starting.
+#   - Verifies every system lib and Python import before proceeding.
+#
 # Usage:
 #   ./install_birdnet.sh
 #
@@ -33,7 +42,6 @@ print_success() { echo -e "${GREEN}✓ $1${NC}"; }
 print_error()   { echo -e "${RED}✗ $1${NC}"; }
 print_info()    { echo -e "${YELLOW}ℹ $1${NC}"; }
 
-# Track failures so we can bail out with a clear message
 ERRORS=0
 note_error() {
     print_error "$1"
@@ -46,7 +54,16 @@ note_error() {
 
 print_header "Pre-flight checks"
 
-# Python version
+# Disk space — need at least 500 MB free for packages + model
+AVAIL_MB=$(df --output=avail -m "$HOME" | tail -1 | tr -d ' ')
+if [ "$AVAIL_MB" -lt 500 ]; then
+    print_error "Only ${AVAIL_MB} MB free on disk. Need at least 500 MB."
+    print_info "Tip: run 'sudo apt clean' and 'pip cache purge' to free space."
+    exit 1
+fi
+print_success "Disk space: ${AVAIL_MB} MB available"
+
+# Python version (birdnetlib needs 3.9+)
 PYTHON_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 PYTHON_MAJOR=$(echo "$PYTHON_VER" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VER" | cut -d. -f2)
@@ -74,26 +91,25 @@ source "$VENV_DIR/bin/activate"
 
 ###############################################################################
 # System dependencies
-# These are C libraries required by Python packages (soundfile, pyaudio).
-# Without them, pip install will succeed but the modules will segfault or
-# fail to import.
+# These are C libraries required by Python packages. Without them, pip
+# install succeeds but the modules fail to import at runtime.
 ###############################################################################
 
 print_header "System dependencies"
 
 SYSTEM_PKGS=(
-    ffmpeg              # audio format conversion
+    ffmpeg              # audio format conversion (used by pydub)
     libsndfile1         # runtime lib for soundfile/librosa
-    libsndfile1-dev     # headers needed to build soundfile
-    portaudio19-dev     # headers needed to build pyaudio
-    libopenblas-dev     # optimized BLAS for numpy/scipy/tensorflow
+    libsndfile1-dev     # headers needed to build soundfile wheel
+    portaudio19-dev     # headers + lib needed to build pyaudio
+    libopenblas-dev     # BLAS for numpy/scipy
 )
 
 print_info "Installing: ${SYSTEM_PKGS[*]}"
 sudo apt-get update -qq
 sudo apt-get install -y -qq "${SYSTEM_PKGS[@]}" 2>/dev/null
 
-# Verify the critical libraries are actually present
+# Verify the critical shared libraries are actually loadable
 for lib in libsndfile.so libportaudio.so; do
     if ldconfig -p 2>/dev/null | grep -q "$lib"; then
         print_success "$lib found"
@@ -111,31 +127,64 @@ print_success "System dependencies installed and verified"
 
 ###############################################################################
 # Python packages
-# Install in dependency order so we catch failures early.
-# birdnetlib 0.18 only declares 4 of its ~12 actual dependencies, so we
-# install the undeclared ones explicitly.
+# birdnetlib 0.18 only declares 4 of its ~12 actual runtime dependencies,
+# so we install the undeclared ones explicitly.
+#
+# We use ai-edge-litert (~12 MB) instead of tensorflow (~260 MB) for the
+# TFLite interpreter. tflite-runtime has no Python 3.13 wheel at all.
+# ai-edge-litert is Google's official successor with 3.13 aarch64 support.
 ###############################################################################
 
-print_header "Python packages (this may take several minutes)"
+print_header "Python packages"
 
 print_info "Upgrading pip..."
 pip install --upgrade pip -q
 
-# 1. TFLite backend — birdnetlib needs tflite_runtime OR tensorflow.
-#    tflite-runtime has no wheel for Python 3.13, so go straight to tensorflow.
-print_info "Installing tensorflow (BirdNET inference backend)..."
-print_info "  This is ~600 MB — be patient..."
-pip install tensorflow
+# Clear pip cache to maximize disk space
+pip cache purge 2>/dev/null || true
 
-# Verify
-if python3 -c "from tensorflow import lite as tflite; print('tensorflow OK')" 2>/dev/null; then
-    print_success "tensorflow installed and importable"
+# --- 1. TFLite backend via ai-edge-litert ---
+print_info "Installing ai-edge-litert (lightweight TFLite runtime, ~12 MB)..."
+pip install ai-edge-litert
+
+if python3 -c "import ai_edge_litert; print('ai-edge-litert OK')" 2>/dev/null; then
+    print_success "ai-edge-litert installed and importable"
 else
-    note_error "tensorflow installed but 'from tensorflow import lite' fails"
+    note_error "ai-edge-litert installed but import fails"
 fi
 
-# 2. librosa + its full dependency tree (scipy, soundfile, resampy, audioread, numba...)
-print_info "Installing librosa (audio analysis library)..."
+# --- 2. Create tflite_runtime shim ---
+# birdnetlib does: import tflite_runtime.interpreter as tflite
+# ai-edge-litert provides the same API under a different package name.
+# This shim bridges the two so birdnetlib works without patching.
+print_info "Creating tflite_runtime compatibility shim..."
+
+SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
+SHIM_DIR="$SITE_PACKAGES/tflite_runtime"
+
+mkdir -p "$SHIM_DIR"
+
+cat > "$SHIM_DIR/__init__.py" << 'SHIMEOF'
+# Shim: redirect tflite_runtime imports to ai_edge_litert
+# birdnetlib expects tflite_runtime but we use the lighter ai-edge-litert
+from ai_edge_litert import interpreter
+SHIMEOF
+
+cat > "$SHIM_DIR/interpreter.py" << 'SHIMEOF'
+# Shim: redirect tflite_runtime.interpreter to ai_edge_litert.interpreter
+from ai_edge_litert.interpreter import *
+from ai_edge_litert.interpreter import Interpreter
+SHIMEOF
+
+# Verify the shim works
+if python3 -c "import tflite_runtime.interpreter as tflite; print('tflite_runtime shim OK')" 2>/dev/null; then
+    print_success "tflite_runtime shim works"
+else
+    note_error "tflite_runtime shim failed — birdnetlib will not load"
+fi
+
+# --- 3. librosa (pulls in scipy, soundfile, resampy, audioread, etc.) ---
+print_info "Installing librosa (audio analysis + dependencies)..."
 pip install librosa
 
 if python3 -c "import librosa; print('librosa OK')" 2>/dev/null; then
@@ -144,15 +193,17 @@ else
     note_error "librosa installed but import fails"
 fi
 
-# 3. birdnetlib itself
+# --- 4. birdnetlib ---
 print_info "Installing birdnetlib..."
 pip install birdnetlib
 
-# 4. Our application dependencies (pyaudio for mic, paho-mqtt for HA)
+# --- 5. Application dependencies ---
 print_info "Installing pyaudio and paho-mqtt..."
 pip install pyaudio paho-mqtt
 
-# Bail out if anything failed
+# Clear pip cache again to reclaim space
+pip cache purge 2>/dev/null || true
+
 if [ "$ERRORS" -gt 0 ]; then
     print_error "$ERRORS package(s) failed verification. See errors above."
     exit 1
@@ -162,8 +213,8 @@ print_success "All Python packages installed"
 
 ###############################################################################
 # Comprehensive import verification
-# Test EVERY import that birdnet_analyzer.py and birdnetlib need.
-# If anything fails here, we stop before creating the service.
+# Test EVERY import that birdnet_analyzer.py and birdnetlib use.
+# If anything fails, we stop before creating the systemd service.
 ###############################################################################
 
 print_header "Import verification"
@@ -175,19 +226,20 @@ import sys
 failures = []
 
 modules = {
-    "numpy":                    "numpy",
-    "scipy":                    "scipy",
-    "librosa":                  "librosa",
-    "soundfile":                "soundfile",
-    "resampy":                  "resampy",
-    "audioread":                "audioread",
-    "tensorflow":               "tensorflow",
-    "tensorflow.lite":          "from tensorflow import lite as tflite",
-    "paho.mqtt.client":         "paho-mqtt",
-    "pyaudio":                  "pyaudio",
-    "birdnetlib":               "birdnetlib",
-    "birdnetlib.analyzer":      "birdnetlib (analyzer)",
-    "birdnetlib.main":          "birdnetlib (main)",
+    "numpy":                        "numpy",
+    "scipy":                        "scipy",
+    "librosa":                      "librosa",
+    "soundfile":                    "soundfile",
+    "resampy":                      "resampy",
+    "audioread":                    "audioread",
+    "ai_edge_litert":               "ai-edge-litert",
+    "tflite_runtime":               "tflite_runtime (shim)",
+    "tflite_runtime.interpreter":   "tflite_runtime.interpreter (shim)",
+    "paho.mqtt.client":             "paho-mqtt",
+    "pyaudio":                      "pyaudio",
+    "birdnetlib":                   "birdnetlib",
+    "birdnetlib.analyzer":          "birdnetlib (analyzer)",
+    "birdnetlib.main":              "birdnetlib (main)",
 }
 
 for mod, label in modules.items():
@@ -218,6 +270,13 @@ print_success "All imports verified"
 ###############################################################################
 
 print_header "BirdNET model"
+
+# Check disk space again before downloading the ~150 MB model
+AVAIL_MB=$(df --output=avail -m "$HOME" | tail -1 | tr -d ' ')
+if [ "$AVAIL_MB" -lt 200 ]; then
+    print_error "Only ${AVAIL_MB} MB free. Need ~200 MB for BirdNET model download."
+    exit 1
+fi
 
 print_info "Loading BirdNET model (downloads ~150 MB on first run)..."
 python3 -c "
@@ -316,7 +375,7 @@ print_success "birdnet_analyzer.service created and enabled"
 
 print_header "End-to-end test"
 
-print_info "Running birdnet_analyzer.py import check..."
+print_info "Running full integration check..."
 
 python3 -c "
 from birdnetlib.analyzer import Analyzer
