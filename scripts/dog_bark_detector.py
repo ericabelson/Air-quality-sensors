@@ -44,12 +44,13 @@ except ImportError as e:
     sys.exit(1)
 
 # TensorFlow Lite import
+# Uses ai-edge-litert (~12 MB) via tflite_runtime shim instead of
+# full tensorflow (~260 MB).  The shim is created by install_birdnet.sh.
 try:
-    import tensorflow as tf
-    from tensorflow import lite
+    from tflite_runtime.interpreter import Interpreter as TFLiteInterpreter
 except ImportError:
-    print("Error: TensorFlow not installed")
-    print("pip install tensorflow==2.13.0")
+    print("Error: tflite_runtime not available")
+    print("Run: ./scripts/install_birdnet.sh")
     sys.exit(1)
 
 # ============================================================================
@@ -225,7 +226,7 @@ class DogBarkClassifier:
 
         # Load TFLite model
         try:
-            self.interpreter = tf.lite.Interpreter(model_path=model_path)
+            self.interpreter = TFLiteInterpreter(model_path=model_path)
             self.interpreter.allocate_tensors()
 
             # Get input and output details

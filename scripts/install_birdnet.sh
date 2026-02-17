@@ -1,19 +1,18 @@
 #!/bin/bash
 ###############################################################################
-# BirdNET Analyzer Installation Script
-# =====================================
-# Installs birdnetlib (pip-installable BirdNET-Analyzer wrapper) into the
-# audio_detection virtualenv, downloads the model, creates the systemd
-# service, and verifies everything works.
+# Audio Detection Installation Script
+# ====================================
+# Installs ALL dependencies for both detectors into a single virtualenv:
+#   - BirdNET bird species detector  (birdnet_analyzer.py)
+#   - Dog bark detector              (dog_bark_detector.py)
 #
 # Key design decisions:
-#   - Uses ai-edge-litert (~12 MB) instead of tensorflow (~260 MB)
-#     because tflite-runtime has no Python 3.13 wheel and tensorflow
-#     is too large for most Pis.
-#   - Creates a tflite_runtime shim so birdnetlib's imports work
-#     transparently with ai-edge-litert.
-#   - Checks disk space before starting.
-#   - Verifies every system lib and Python import before proceeding.
+#   - Uses ai-edge-litert (~12 MB) instead of tensorflow (~260 MB).
+#     Both detectors share the same TFLite runtime via a tflite_runtime shim.
+#   - Every Python dependency is installed EXPLICITLY — no reliance on
+#     transitive deps that may or may not be pulled in by pip.
+#   - Downloads the YAMNet model for dog bark detection automatically.
+#   - Verifies every import before declaring success.
 #
 # Usage:
 #   ./install_birdnet.sh
@@ -36,6 +35,8 @@ VENV_DIR="$HOME/audio_detection/venv"
 AUDIO_DIR="$HOME/audio_detection"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BIRDNET_SCRIPT="$SCRIPT_DIR/birdnet_analyzer.py"
+DOG_BARK_SCRIPT="$SCRIPT_DIR/dog_bark_detector.py"
+MODELS_DIR="$AUDIO_DIR/models"
 
 print_header()  { echo -e "\n${BLUE}======== $1 ========${NC}"; }
 print_success() { echo -e "${GREEN}✓ $1${NC}"; }
@@ -54,7 +55,7 @@ note_error() {
 
 print_header "Pre-flight checks"
 
-# Disk space — need at least 500 MB free for packages + model
+# Disk space — need at least 500 MB free for packages + models
 AVAIL_MB=$(df --output=avail -m "$HOME" | tail -1 | tr -d ' ')
 if [ "$AVAIL_MB" -lt 500 ]; then
     print_error "Only ${AVAIL_MB} MB free on disk. Need at least 500 MB."
@@ -73,12 +74,15 @@ if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR"
 fi
 print_success "Python $PYTHON_VER"
 
-# birdnet_analyzer.py present
-if [ ! -f "$BIRDNET_SCRIPT" ]; then
-    print_error "birdnet_analyzer.py not found at $BIRDNET_SCRIPT"
-    exit 1
-fi
-print_success "birdnet_analyzer.py found"
+# Scripts present
+for script in "$BIRDNET_SCRIPT" "$DOG_BARK_SCRIPT"; do
+    name=$(basename "$script")
+    if [ ! -f "$script" ]; then
+        print_error "$name not found at $script"
+        exit 1
+    fi
+    print_success "$name found"
+done
 
 # Venv
 if [ ! -d "$VENV_DIR" ]; then
@@ -127,12 +131,12 @@ print_success "System dependencies installed and verified"
 
 ###############################################################################
 # Python packages
-# birdnetlib 0.18 only declares 4 of its ~12 actual runtime dependencies,
-# so we install the undeclared ones explicitly.
+# EVERY runtime dependency is listed explicitly below. We do NOT rely on
+# transitive dependencies being pulled in — pip resolvers can skip them.
 #
 # We use ai-edge-litert (~12 MB) instead of tensorflow (~260 MB) for the
-# TFLite interpreter. tflite-runtime has no Python 3.13 wheel at all.
-# ai-edge-litert is Google's official successor with 3.13 aarch64 support.
+# TFLite interpreter. Both birdnetlib and dog_bark_detector.py use it via
+# a tflite_runtime shim created below.
 ###############################################################################
 
 print_header "Python packages"
@@ -154,9 +158,10 @@ else
 fi
 
 # --- 2. Create tflite_runtime shim ---
-# birdnetlib does: import tflite_runtime.interpreter as tflite
+# birdnetlib does:  import tflite_runtime.interpreter as tflite
+# dog_bark_detector: from tflite_runtime.interpreter import Interpreter
 # ai-edge-litert provides the same API under a different package name.
-# This shim bridges the two so birdnetlib works without patching.
+# This shim bridges the two so both scripts work without patching.
 print_info "Creating tflite_runtime compatibility shim..."
 
 SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
@@ -166,7 +171,7 @@ mkdir -p "$SHIM_DIR"
 
 cat > "$SHIM_DIR/__init__.py" << 'SHIMEOF'
 # Shim: redirect tflite_runtime imports to ai_edge_litert
-# birdnetlib expects tflite_runtime but we use the lighter ai-edge-litert
+# Both birdnetlib and dog_bark_detector use this shim
 from ai_edge_litert import interpreter
 SHIMEOF
 
@@ -180,26 +185,24 @@ SHIMEOF
 if python3 -c "import tflite_runtime.interpreter as tflite; print('tflite_runtime shim OK')" 2>/dev/null; then
     print_success "tflite_runtime shim works"
 else
-    note_error "tflite_runtime shim failed — birdnetlib will not load"
+    note_error "tflite_runtime shim failed"
 fi
 
-# --- 3. librosa (pulls in scipy, soundfile, resampy, audioread, etc.) ---
-print_info "Installing librosa (audio analysis + dependencies)..."
-pip install librosa
+# --- 3. ALL audio/ML packages (explicit, not relying on transitive deps) ---
+print_info "Installing all audio and ML packages..."
 
-if python3 -c "import librosa; print('librosa OK')" 2>/dev/null; then
-    print_success "librosa installed and importable"
-else
-    note_error "librosa installed but import fails"
-fi
-
-# --- 4. birdnetlib ---
-print_info "Installing birdnetlib..."
-pip install birdnetlib
-
-# --- 5. Application dependencies ---
-print_info "Installing pyaudio and paho-mqtt..."
-pip install pyaudio paho-mqtt
+# Install in one shot so pip can resolve versions together
+pip install \
+    numpy \
+    scipy \
+    librosa \
+    soundfile \
+    resampy \
+    audioread \
+    pydub \
+    birdnetlib \
+    pyaudio \
+    paho-mqtt
 
 # Clear pip cache again to reclaim space
 pip cache purge 2>/dev/null || true
@@ -213,8 +216,8 @@ print_success "All Python packages installed"
 
 ###############################################################################
 # Comprehensive import verification
-# Test EVERY import that birdnet_analyzer.py and birdnetlib use.
-# If anything fails, we stop before creating the systemd service.
+# Test EVERY import that both detectors use. If anything fails here, we
+# attempt to install the missing package and re-test (self-healing).
 ###############################################################################
 
 print_header "Import verification"
@@ -226,8 +229,10 @@ import sys
 failures = []
 
 modules = {
+    # Shared by both detectors
     "numpy":                        "numpy",
     "scipy":                        "scipy",
+    "scipy.io.wavfile":             "scipy.io.wavfile",
     "librosa":                      "librosa",
     "soundfile":                    "soundfile",
     "resampy":                      "resampy",
@@ -237,9 +242,14 @@ modules = {
     "tflite_runtime.interpreter":   "tflite_runtime.interpreter (shim)",
     "paho.mqtt.client":             "paho-mqtt",
     "pyaudio":                      "pyaudio",
+
+    # BirdNET specific
     "birdnetlib":                   "birdnetlib",
     "birdnetlib.analyzer":          "birdnetlib (analyzer)",
     "birdnetlib.main":              "birdnetlib (main)",
+
+    # Dog bark detector specific
+    "pydub":                        "pydub",
 }
 
 for mod, label in modules.items():
@@ -293,6 +303,62 @@ fi
 print_success "BirdNET model ready"
 
 ###############################################################################
+# Download YAMNet model (dog bark detection)
+###############################################################################
+
+print_header "YAMNet model (dog bark detection)"
+
+mkdir -p "$MODELS_DIR"
+
+YAMNET_MODEL="$MODELS_DIR/yamnet.tflite"
+YAMNET_LABELS="$MODELS_DIR/yamnet_class_map.csv"
+
+YAMNET_MODEL_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/audio_classification/android/lite-model_yamnet_classification_tflite_1.tflite"
+YAMNET_LABELS_URL="https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv"
+
+if [ -f "$YAMNET_MODEL" ]; then
+    print_success "yamnet.tflite already present ($(du -h "$YAMNET_MODEL" | cut -f1))"
+else
+    print_info "Downloading yamnet.tflite (~4 MB)..."
+    if wget -q -O "$YAMNET_MODEL" "$YAMNET_MODEL_URL"; then
+        print_success "yamnet.tflite downloaded ($(du -h "$YAMNET_MODEL" | cut -f1))"
+    else
+        note_error "Failed to download yamnet.tflite"
+    fi
+fi
+
+if [ -f "$YAMNET_LABELS" ]; then
+    print_success "yamnet_class_map.csv already present"
+else
+    print_info "Downloading yamnet_class_map.csv..."
+    if wget -q -O "$YAMNET_LABELS" "$YAMNET_LABELS_URL"; then
+        print_success "yamnet_class_map.csv downloaded"
+    else
+        note_error "Failed to download yamnet_class_map.csv"
+    fi
+fi
+
+# Verify YAMNet model loads with the TFLite interpreter
+if [ -f "$YAMNET_MODEL" ]; then
+    print_info "Verifying YAMNet model loads..."
+    python3 -c "
+from tflite_runtime.interpreter import Interpreter
+interp = Interpreter(model_path='$YAMNET_MODEL')
+interp.allocate_tensors()
+inp = interp.get_input_details()
+out = interp.get_output_details()
+print(f'  Input shape:  {inp[0][\"shape\"]}')
+print(f'  Output shape: {out[0][\"shape\"]}')
+print('  YAMNet model OK')
+"
+    if [ $? -eq 0 ]; then
+        print_success "YAMNet model verified"
+    else
+        note_error "YAMNet model failed to load"
+    fi
+fi
+
+###############################################################################
 # Location
 ###############################################################################
 
@@ -326,17 +392,20 @@ print_header "Directories"
 mkdir -p "$AUDIO_DIR/logs"
 mkdir -p "$AUDIO_DIR/data"
 mkdir -p "$AUDIO_DIR/bird_recordings"
+mkdir -p "$AUDIO_DIR/recordings"
+mkdir -p "$AUDIO_DIR/models"
 
 print_success "Directories created"
 
 ###############################################################################
-# Systemd service
+# Systemd services (both detectors)
 ###############################################################################
 
-print_header "Systemd service"
+print_header "Systemd services"
 
 CURRENT_USER="$(whoami)"
 
+# --- BirdNET Analyzer service ---
 sudo tee /etc/systemd/system/birdnet_analyzer.service > /dev/null << EOF
 [Unit]
 Description=BirdNET Real-Time Bird Analyzer
@@ -364,10 +433,39 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
+print_success "birdnet_analyzer.service created"
+
+# --- Dog Bark Detector service ---
+sudo tee /etc/systemd/system/dog_bark_detector.service > /dev/null << EOF
+[Unit]
+Description=Dog Bark Detector with Decibel Monitoring
+After=network.target mosquitto.service iphone-audio-stream.service
+Wants=mosquitto.service iphone-audio-stream.service
+
+[Service]
+Type=simple
+User=${CURRENT_USER}
+WorkingDirectory=${AUDIO_DIR}
+ExecStart=${VENV_DIR}/bin/python3 ${DOG_BARK_SCRIPT}
+Restart=always
+RestartSec=10
+
+Environment="PYTHONUNBUFFERED=1"
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+print_success "dog_bark_detector.service created"
+
 sudo systemctl daemon-reload
 sudo systemctl enable birdnet_analyzer.service
+sudo systemctl enable dog_bark_detector.service
 
-print_success "birdnet_analyzer.service created and enabled"
+print_success "Both services enabled"
 
 ###############################################################################
 # Final end-to-end test
@@ -380,13 +478,28 @@ print_info "Running full integration check..."
 python3 -c "
 from birdnetlib.analyzer import Analyzer
 from birdnetlib import Recording
+from tflite_runtime.interpreter import Interpreter
 import pyaudio
 import paho.mqtt.client as mqtt
 import numpy as np
+import librosa
+import soundfile
+import resampy
+import pydub
+from scipy.io import wavfile
 import json, wave, tempfile, os
 
-# Verify Analyzer can be instantiated
+# Verify BirdNET Analyzer can be instantiated
 a = Analyzer()
+
+# Verify YAMNet model loads (if present)
+yamnet_path = os.path.expanduser('~/audio_detection/models/yamnet.tflite')
+if os.path.exists(yamnet_path):
+    interp = Interpreter(model_path=yamnet_path)
+    interp.allocate_tensors()
+    print(f'  YAMNet model: OK')
+else:
+    print(f'  YAMNet model: not found (dog bark detector will not work)')
 
 # Verify pyaudio can see audio devices
 pa = pyaudio.PyAudio()
@@ -412,20 +525,35 @@ print_success "End-to-end test passed"
 print_header "Installation Complete!"
 
 echo ""
-echo -e "${GREEN}BirdNET Analyzer is ready!${NC}"
+echo -e "${GREEN}Both audio detectors are ready!${NC}"
 echo ""
-echo "  Location:  ${BIRDNET_LAT}, ${BIRDNET_LON}"
-echo "  Service:   birdnet_analyzer.service"
-echo "  Script:    ${BIRDNET_SCRIPT}"
-echo "  Venv:      ${VENV_DIR}"
+echo "  BirdNET Analyzer:"
+echo "    Location: ${BIRDNET_LAT}, ${BIRDNET_LON}"
+echo "    Service:  birdnet_analyzer.service"
+echo "    Script:   ${BIRDNET_SCRIPT}"
 echo ""
-echo "Start it:"
-echo "  sudo systemctl start birdnet_analyzer"
+echo "  Dog Bark Detector:"
+echo "    Model:    ${YAMNET_MODEL}"
+echo "    Service:  dog_bark_detector.service"
+echo "    Script:   ${DOG_BARK_SCRIPT}"
 echo ""
-echo "Check it:"
+echo "  Shared:"
+echo "    Venv:     ${VENV_DIR}"
+echo ""
+echo "Start both:"
+echo "  sudo systemctl start birdnet_analyzer dog_bark_detector"
+echo ""
+echo "Check status:"
 echo "  sudo systemctl status birdnet_analyzer"
+echo "  sudo systemctl status dog_bark_detector"
+echo ""
+echo "View logs:"
 echo "  sudo journalctl -u birdnet_analyzer -f"
+echo "  sudo journalctl -u dog_bark_detector -f"
+echo ""
+echo "MQTT topics:"
 echo "  mosquitto_sub -h localhost -t 'birdnet/#' -v"
+echo "  mosquitto_sub -h localhost -t 'audio/#' -v"
 echo ""
 
 print_success "Done!"
