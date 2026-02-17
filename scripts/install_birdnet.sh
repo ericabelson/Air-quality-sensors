@@ -141,10 +141,9 @@ if [ -z "$BIRDNET_LAT" ] || [ -z "$BIRDNET_LON" ]; then
         BIRDNET_LAT="$USER_LAT"
         BIRDNET_LON="$USER_LON"
     else
-        BIRDNET_LAT="0"
-        BIRDNET_LON="0"
-        print_info "Skipped — BirdNET will run without location filtering."
-        print_info "You can set BIRDNET_LAT / BIRDNET_LON in the service file later."
+        BIRDNET_LAT="30.2672"
+        BIRDNET_LON="-97.7431"
+        print_info "Defaulting to Austin, TX (30.2672, -97.7431)"
     fi
 else
     print_success "Location: $BIRDNET_LAT, $BIRDNET_LON"

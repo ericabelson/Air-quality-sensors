@@ -61,8 +61,8 @@ echo -e "${GREEN}✓ dog_bark_detector.service created${NC}"
 echo -e "${YELLOW}Creating birdnet_analyzer.service...${NC}"
 
 # Location — set these env vars before running, or edit the service file later
-BIRDNET_LAT="${BIRDNET_LAT:-0}"
-BIRDNET_LON="${BIRDNET_LON:-0}"
+BIRDNET_LAT="${BIRDNET_LAT:-30.2672}"
+BIRDNET_LON="${BIRDNET_LON:-97.7431}"
 
 sudo tee /etc/systemd/system/birdnet_analyzer.service > /dev/null << EOF
 [Unit]

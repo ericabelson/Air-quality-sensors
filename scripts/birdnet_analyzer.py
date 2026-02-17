@@ -90,8 +90,8 @@ MIN_CONFIDENCE = float(os.environ.get('BIRDNET_MIN_CONF', '0.25'))
 # Location — BirdNET uses lat/lon + date to filter species likely present
 # in your region at this time of year.  Set via env vars or edit here.
 # If left at 0/0 BirdNET still works but won't filter by region.
-LATITUDE = float(os.environ.get('BIRDNET_LAT', '0'))
-LONGITUDE = float(os.environ.get('BIRDNET_LON', '0'))
+LATITUDE = float(os.environ.get('BIRDNET_LAT', '30.2672'))
+LONGITUDE = float(os.environ.get('BIRDNET_LON', '-97.7431'))
 
 # MQTT Settings (same broker as dog_bark_detector.py)
 MQTT_BROKER = os.environ.get('MQTT_BROKER', 'localhost')
