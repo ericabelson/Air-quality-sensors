@@ -101,6 +101,13 @@ print_header "Python packages"
 print_info "Upgrading pip..."
 pip install --upgrade pip -q
 
+print_info "Installing TFLite runtime (needed by BirdNET model)..."
+# Try lightweight tflite-runtime first; fall back to full tensorflow
+if ! pip install tflite-runtime -q 2>/dev/null; then
+    print_info "tflite-runtime not available for this Python version, installing tensorflow..."
+    pip install tensorflow -q
+fi
+
 print_info "Installing birdnetlib (includes BirdNET-Analyzer)..."
 pip install birdnetlib -q
 
