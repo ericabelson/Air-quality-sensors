@@ -128,6 +128,13 @@ mqtt:
       value_template: "{{ value_json.total_detections | int }}"
       icon: mdi:counter
 
+    # BirdNET Analyzer Status
+    - name: "BirdNET Status"
+      unique_id: birdnet_status
+      state_topic: "birdnet/status"
+      value_template: "{{ value_json.status }}"
+      icon: mdi:bird
+
   binary_sensor:
     # Dog Barking Status (Binary)
     - name: "Dog Barking"
@@ -160,6 +167,16 @@ mqtt:
       payload_off: false
       device_class: running
       icon: mdi:monitor-eye
+
+    # BirdNET Monitor Active - distinguishes "no birds" from "analyzer not running"
+    - name: "BirdNET Monitor Active"
+      unique_id: birdnet_monitor_active
+      state_topic: "birdnet/monitor_active"
+      value_template: "{{ value_json.active }}"
+      payload_on: true
+      payload_off: false
+      device_class: running
+      icon: mdi:bird
 
 # ============================================================================
 # TEMPLATE SENSORS
@@ -384,6 +401,8 @@ group:
       - sensor.bird_scientific_name
       - sensor.bird_species_today
       - sensor.bird_detections_today
+      - sensor.birdnet_status
+      - binary_sensor.birdnet_monitor_active
 
   audio_settings:
     name: Audio Detection Settings

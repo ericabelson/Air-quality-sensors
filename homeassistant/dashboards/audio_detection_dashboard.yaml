@@ -269,12 +269,28 @@ views:
     path: birds
     icon: mdi:bird
     cards:
+      # ========== BIRDNET STATUS ==========
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: binary_sensor.birdnet_monitor_active
+            name: BirdNET Active
+            icon: mdi:bird
+          - type: entity
+            entity: sensor.birdnet_status
+            name: BirdNET Status
+            icon: mdi:radio-tower
+
       # ========== LATEST BIRD DETECTION ==========
       - type: vertical-stack
         cards:
           - type: markdown
             content: >
-              # 🐦 Latest Bird Detection
+              {% if is_state('binary_sensor.birdnet_monitor_active', 'off') %}
+              # BirdNET Not Monitoring
+              The bird analyzer is offline. Check the service status.
+              {% else %}
+              # Latest Bird Detection
 
               ## {{ states('sensor.latest_bird_species') }}
 
@@ -283,6 +299,7 @@ views:
               Confidence: **{{ states('sensor.bird_confidence') }}%**
 
               Detected: {{ relative_time(states.sensor.latest_bird_species.last_changed) }} ago
+              {% endif %}
             card_mod:
               style: |
                 ha-card {
