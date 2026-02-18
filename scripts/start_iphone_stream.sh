@@ -60,12 +60,13 @@ echo "  Transport:  TCP (reliable for WiFi)"
 # TCP detects connection loss quickly and lets systemd restart us.
 #
 # Timeouts (in microseconds):
-#   -stimeout  10000000  = 10s RTSP socket timeout (connect + setup)
+#   -timeout   10000000  = 10s RTSP socket timeout (connect + setup)
+#                          (renamed from -stimeout in FFmpeg 7.x)
 #   -rw_timeout 5000000  = 5s  read/write timeout (during streaming)
 #
 exec /usr/bin/ffmpeg \
     -rtsp_transport tcp \
-    -stimeout 10000000 \
+    -timeout 10000000 \
     -rw_timeout 5000000 \
     -i "$RTSP_URL" \
     -vn \
