@@ -220,12 +220,34 @@ echo ""
 
 # --- 14. DISK / RECORDING STORAGE ---
 echo "=== 14. STORAGE ==="
-df -h /mnt/usb 2>/dev/null || echo "/mnt/usb not mounted"
+echo "--- USB Drive ---"
+if mountpoint -q /mnt/usb 2>/dev/null; then
+    echo "  /mnt/usb: MOUNTED"
+    df -h /mnt/usb 2>/dev/null
+    if [ -w /mnt/usb ]; then
+        echo "  Writable: YES"
+    else
+        echo "  Writable: *** NO *** - check permissions"
+    fi
+else
+    echo "  /mnt/usb: *** NOT MOUNTED ***"
+    echo "  Dog bark recordings will fall back to the SD card."
+    echo "  To mount a USB drive:"
+    echo "    1. Plug in USB drive"
+    echo "    2. Find it: lsblk"
+    echo "    3. Mount: sudo mount /dev/sdaX /mnt/usb"
+    echo "    4. Auto-mount: add to /etc/fstab"
+fi
+echo ""
+echo "--- Local Storage ---"
 df -h "$HOME/audio_detection" 2>/dev/null || echo "$HOME/audio_detection not found"
 echo ""
-echo "Recording files:"
+echo "--- Recording File Counts ---"
 find /mnt/usb/bark_audio/recordings -name "*.mp3" 2>/dev/null | wc -l | xargs -I{} echo "  MP3 files on USB: {}"
 find "$HOME/audio_detection/recordings" -name "*.mp3" 2>/dev/null | wc -l | xargs -I{} echo "  MP3 files local: {}"
+echo ""
+echo "--- /etc/fstab USB entry ---"
+grep -i "usb\|sda\|sdb" /etc/fstab 2>/dev/null || echo "  (no USB entries in fstab - drive won't auto-mount on reboot)"
 echo ""
 
 # --- 15. SERVICE FILE CARD NUMBER VS ACTUAL ---

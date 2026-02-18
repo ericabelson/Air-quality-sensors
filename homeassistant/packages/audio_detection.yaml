@@ -88,6 +88,20 @@ mqtt:
       json_attributes_topic: "audio/microphone_status"
       json_attributes_template: "{{ value_json | tojson }}"
 
+    # Recording Storage Status (USB drive health)
+    - name: "Recording Storage Status"
+      unique_id: recording_storage_status
+      state_topic: "audio/storage_status"
+      value_template: "{{ value_json.status }}"
+      icon: >
+        {% if value_json.status == 'usb' %}
+          mdi:usb-flash-drive
+        {% else %}
+          mdi:alert-circle
+        {% endif %}
+      json_attributes_topic: "audio/storage_status"
+      json_attributes_template: "{{ value_json | tojson }}"
+
     # ============================================================================
     # MQTT SENSORS - Bird Detection (from BirdNET-Pi)
     # ============================================================================
@@ -167,6 +181,16 @@ mqtt:
       payload_off: false
       device_class: running
       icon: mdi:monitor-eye
+
+    # USB Recording Drive Connected
+    - name: "USB Recording Drive"
+      unique_id: usb_recording_drive
+      state_topic: "audio/storage_status"
+      value_template: "{{ value_json.usb_connected }}"
+      payload_on: true
+      payload_off: false
+      device_class: connectivity
+      icon: mdi:usb-flash-drive
 
     # BirdNET Monitor Active - distinguishes "no birds" from "analyzer not running"
     - name: "BirdNET Monitor Active"
@@ -395,6 +419,8 @@ group:
       - sensor.quiet_streak
       - sensor.monitor_uptime_today
       - sensor.monitor_uptime_percentage_today
+      - sensor.recording_storage_status
+      - binary_sensor.usb_recording_drive
 
   bird_detection_sensors:
     name: Bird Detection

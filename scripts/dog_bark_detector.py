@@ -107,24 +107,28 @@ MQTT_TOPIC_STATS = "audio/bark_stats"
 MQTT_TOPIC_LAST_DETECTION = "audio/last_detection"
 MQTT_TOPIC_MIC_STATUS = "audio/microphone_status"
 MQTT_TOPIC_MONITOR_ACTIVE = "audio/monitor_active"  # Whether detector is actively monitoring
+MQTT_TOPIC_STORAGE_STATUS = "audio/storage_status"  # USB drive / recording storage health
 
 # File Paths
 BASE_DIR = os.path.expanduser("~/audio_detection")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "yamnet.tflite")
 LABELS_PATH = os.path.join(BASE_DIR, "models", "yamnet_class_map.csv")
 
-# Determine recording directory: prefer USB mount if available, fall back to local
+# Recording Storage
+# Prefer USB drive for MP3 recordings (saves SD card wear). Fall back to local.
+# CSV data always goes to BASE_DIR regardless of USB status.
 USB_MOUNT_PATH = "/mnt/usb/bark_audio/recordings"
 LOCAL_RECORDING_PATH = os.path.join(BASE_DIR, "recordings")
+USB_CHECK_INTERVAL = 300  # Re-check USB availability every 5 minutes
+
+def is_usb_available():
+    """Check if USB drive is mounted and writable"""
+    return os.path.ismount("/mnt/usb") and os.access("/mnt/usb", os.W_OK)
 
 def get_recording_dir():
     """Determine the best recording directory to use"""
-    # Try USB mount first (for larger storage)
-    if os.path.exists("/mnt/usb") and os.access("/mnt/usb", os.W_OK):
-        print(f"Using USB mount for recordings: {USB_MOUNT_PATH}")
+    if is_usb_available():
         return USB_MOUNT_PATH
-    # Fall back to local directory
-    print(f"USB mount not available, using local directory for recordings: {LOCAL_RECORDING_PATH}")
     return LOCAL_RECORDING_PATH
 
 RECORDING_DIR = get_recording_dir()
@@ -388,12 +392,15 @@ def calculate_decibels(audio_data):
 class AudioRecorder:
     """Records audio clips of bark events"""
 
-    def __init__(self, recording_dir):
+    def __init__(self, recording_dir, mqtt_publisher=None):
         self.recording_dir = recording_dir
         self.is_recording = False
         self.recording_buffer = []
         self.recording_start_time = None
         self.last_cleanup_check = datetime.now()
+        self.last_usb_check = datetime.now()
+        self.usb_connected = is_usb_available()
+        self.mqtt = mqtt_publisher
 
     def check_storage_and_cleanup(self):
         """Delete oldest recordings when total exceeds MAX_RECORDING_MB"""
@@ -446,6 +453,34 @@ class AudioRecorder:
 
         except Exception as e:
             logger.error(f"Error during storage cleanup: {e}")
+
+    def check_usb_status(self, force=False):
+        """Periodically re-check USB drive and switch recording directory if needed"""
+        if not force and (datetime.now() - self.last_usb_check).total_seconds() < USB_CHECK_INTERVAL:
+            return
+        self.last_usb_check = datetime.now()
+
+        usb_now = is_usb_available()
+        new_dir = get_recording_dir()
+
+        if usb_now != self.usb_connected:
+            # USB status changed
+            self.usb_connected = usb_now
+            self.recording_dir = new_dir
+            os.makedirs(self.recording_dir, exist_ok=True)
+
+            if usb_now:
+                logger.info(f"USB drive reconnected - recordings now going to {new_dir}")
+            else:
+                logger.warning(f"USB drive disconnected - recordings falling back to {new_dir}")
+
+        if self.mqtt:
+            details = ""
+            if not usb_now:
+                details = ("USB drive not mounted at /mnt/usb. "
+                           "Recordings are saving to SD card. "
+                           "Plug in USB drive and mount it to preserve SD card life.")
+            self.mqtt.publish_storage_status(usb_now, new_dir, details)
 
     def start_recording(self):
         """Start recording audio"""
@@ -560,6 +595,7 @@ class MQTTPublisher:
         MQTT_TOPIC_LAST_DETECTION,
         MQTT_TOPIC_MIC_STATUS,
         MQTT_TOPIC_MONITOR_ACTIVE,
+        MQTT_TOPIC_STORAGE_STATUS,
     }
 
     def publish(self, topic, payload):
@@ -629,6 +665,17 @@ class MQTTPublisher:
         }
         self.publish(MQTT_TOPIC_MIC_STATUS, payload)
 
+    def publish_storage_status(self, usb_connected, recording_dir, details=None):
+        """Publish recording storage status"""
+        payload = {
+            'usb_connected': usb_connected,
+            'recording_path': recording_dir,
+            'status': 'usb' if usb_connected else 'local_fallback',
+            'timestamp': datetime.now().isoformat(),
+            'details': details or ''
+        }
+        self.publish(MQTT_TOPIC_STORAGE_STATUS, payload)
+
 # ============================================================================
 # MAIN DETECTOR
 # ============================================================================
@@ -642,7 +689,7 @@ class DogBarkDetector:
 
         self.classifier = DogBarkClassifier(MODEL_PATH, LABELS_PATH)
         self.mqtt = MQTTPublisher(MQTT_BROKER, MQTT_PORT)
-        self.recorder = AudioRecorder(RECORDING_DIR)
+        self.recorder = AudioRecorder(RECORDING_DIR, self.mqtt)
 
         # Event tracking
         self.all_events = []
@@ -685,6 +732,14 @@ class DogBarkDetector:
         # Audio stream
         self.audio = pyaudio.PyAudio()
         self.stream = None
+
+        # Publish initial USB storage status
+        usb_ok = is_usb_available()
+        if usb_ok:
+            logger.info(f"Recording to USB drive: {RECORDING_DIR}")
+        else:
+            logger.warning(f"USB drive not mounted - recording to SD card: {RECORDING_DIR}")
+        self.recorder.check_usb_status(force=True)
 
         logger.info("Initialization complete!")
 
@@ -891,6 +946,9 @@ class DogBarkDetector:
                         self.last_bark_decibels
                     )
                     self.last_mqtt_update = datetime.now()
+
+                # Periodically check USB drive status and switch recording dir if needed
+                self.recorder.check_usb_status()
 
                 # Skip classification if audio is too quiet (silence/no input)
                 if decibels <= MIN_CLASSIFY_DB:
