@@ -88,21 +88,53 @@ echo ""
 
 # --- 9. NETWORK: CAN WE REACH THE IPHONE? ---
 echo "=== 9. NETWORK TO IPHONE ==="
-# Try to find the iPhone IP from the service file
-IPHONE_IP=$(systemctl cat iphone-audio-stream 2>/dev/null | grep -oP 'rtsp://\K[0-9.]+' | head -1)
+# Try to find the iPhone IP from the service file or environment
+IPHONE_IP=$(systemctl cat iphone-audio-stream 2>/dev/null | grep -oP 'IPHONE_IP=\K[0-9.]+' | head -1)
+if [ -z "$IPHONE_IP" ]; then
+    IPHONE_IP=$(systemctl cat iphone-audio-stream 2>/dev/null | grep -oP 'rtsp://\K[0-9.]+' | head -1)
+fi
 if [ -n "$IPHONE_IP" ]; then
     echo "iPhone IP from service: $IPHONE_IP"
+    echo ""
+
+    # Ping test (note: iPhones block ICMP when screen is locked, so failure is normal)
+    echo "--- ICMP ping test ---"
     if ping -c 2 -W 2 "$IPHONE_IP" 2>&1; then
-        echo "PING: SUCCESS"
+        echo "PING: SUCCESS (phone screen is likely on)"
     else
-        echo "PING: *** FAILED *** - iPhone may be off or IP changed"
+        echo "PING: no reply (normal - iPhones block ping when screen is locked)"
     fi
     echo ""
-    echo "--- RTSP stream probe (5s timeout) ---"
+
+    # TCP port test (more reliable than ping for iPhones)
+    echo "--- TCP port 8554 test (3s timeout) ---"
+    if command -v nc &>/dev/null; then
+        if nc -z -w 3 "$IPHONE_IP" 8554 2>&1; then
+            echo "TCP 8554: OPEN - RTSP server is accepting connections"
+        else
+            echo "TCP 8554: *** CLOSED/FILTERED ***"
+            echo "  Possible causes:"
+            echo "    - Periscope HD app is not in the foreground"
+            echo "    - iOS suspended the app (screen locked / app backgrounded)"
+            echo "    - iPhone IP changed (check router DHCP leases)"
+        fi
+    else
+        echo "(nc not found, skipping TCP test)"
+    fi
+    echo ""
+
+    # RTSP probe using TCP (matching our actual transport)
+    echo "--- RTSP stream probe (5s timeout, TCP) ---"
     if command -v ffprobe &>/dev/null; then
-        timeout 5 ffprobe -v error -show_entries stream=codec_name,sample_rate,channels \
-            -rtsp_transport udp "rtsp://${IPHONE_IP}:8554/live.sdp" 2>&1 || \
-            echo "*** RTSP PROBE FAILED *** - Periscope HD may not be streaming"
+        if timeout 5 ffprobe -v error -rtsp_transport tcp \
+            -show_entries stream=codec_name,sample_rate,channels \
+            "rtsp://${IPHONE_IP}:8554/live.sdp" 2>&1; then
+            echo "RTSP PROBE: SUCCESS - stream is available"
+        else
+            echo "RTSP PROBE: FAILED"
+            echo "  If TCP port 8554 is also closed, the RTSP server is not listening."
+            echo "  If TCP port 8554 is open but RTSP fails, the stream may be misconfigured."
+        fi
     else
         echo "(ffprobe not found, skipping stream probe)"
     fi
@@ -267,6 +299,64 @@ if [ -n "$SVC_CARD" ] && [ -n "$ACTUAL_CARD" ]; then
     fi
 else
     echo "  Service card: ${SVC_CARD:-unknown}, Actual loopback card: ${ACTUAL_CARD:-unknown}"
+fi
+echo ""
+
+# --- 16. SERVICE DEPLOYMENT CHECK ---
+echo "=== 16. SERVICE DEPLOYMENT CHECK ==="
+# Check if the deployed service file uses the new wrapper script or old hardcoded ffmpeg
+SVC_EXEC=$(systemctl cat iphone-audio-stream 2>/dev/null | grep 'ExecStart=' | head -1)
+if echo "$SVC_EXEC" | grep -q 'start_iphone_stream.sh'; then
+    echo "  Service: USES NEW WRAPPER SCRIPT (start_iphone_stream.sh)"
+    # Check transport type from the wrapper script
+    WRAPPER=$(echo "$SVC_EXEC" | grep -oP '/\S+start_iphone_stream.sh')
+    if [ -f "$WRAPPER" ]; then
+        if grep -q 'rtsp_transport tcp' "$WRAPPER"; then
+            echo "  Transport: TCP (reliable)"
+        elif grep -q 'rtsp_transport udp' "$WRAPPER"; then
+            echo "  Transport: *** UDP *** (unreliable over WiFi, consider switching to TCP)"
+        fi
+    fi
+    # Check if audio_startup.service exists and ran
+    if systemctl is-active audio_startup.service &>/dev/null; then
+        echo "  audio_startup.service: active"
+    elif systemctl list-unit-files audio_startup.service &>/dev/null 2>&1; then
+        echo "  audio_startup.service: *** NOT ACTIVE *** (required for dynamic card detection)"
+    else
+        echo "  audio_startup.service: *** NOT INSTALLED *** - run create_services.sh"
+    fi
+    if [ -f /run/audio_loopback_card ]; then
+        echo "  /run/audio_loopback_card: $(cat /run/audio_loopback_card)"
+    else
+        echo "  /run/audio_loopback_card: *** MISSING *** - audio_startup.service needs to run"
+    fi
+elif echo "$SVC_EXEC" | grep -q 'ffmpeg'; then
+    echo "  Service: OLD HARDCODED FFMPEG (not using wrapper script)"
+    echo "  *** Services need to be redeployed ***"
+    echo "  Run: IPHONE_IP=$IPHONE_IP bash /path/to/create_services.sh"
+    if echo "$SVC_EXEC" | grep -q 'rtsp_transport udp'; then
+        echo "  Transport: *** UDP *** (unreliable - redeploy to get TCP)"
+    fi
+else
+    echo "  Service: could not determine type"
+fi
+echo ""
+
+# --- 17. FIREWALL CHECK ---
+echo "=== 17. FIREWALL (UFW) ==="
+if command -v ufw &>/dev/null; then
+    UFW_STATUS=$(sudo ufw status 2>/dev/null | head -1)
+    echo "  UFW: $UFW_STATUS"
+    if echo "$UFW_STATUS" | grep -qi "active"; then
+        # Show rules related to our iPhone or audio
+        echo "  Relevant rules:"
+        sudo ufw status numbered 2>/dev/null | grep -i -E "iphone|rtsp|8554|udp" || echo "    (no iPhone/audio-specific rules found)"
+        echo ""
+        echo "  Note: If using UDP RTSP transport, incoming RTP packets from the"
+        echo "  iPhone need to pass UFW. TCP transport avoids this issue entirely."
+    fi
+else
+    echo "  UFW not installed (no firewall concerns)"
 fi
 echo ""
 

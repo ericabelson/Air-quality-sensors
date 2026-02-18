@@ -109,7 +109,7 @@ Wants=network.target
 Type=simple
 User=${PI_USER}
 Restart=always
-RestartSec=10
+RestartSec=5
 
 # iPhone IP and port passed as environment variables
 Environment="IPHONE_IP=${IPHONE_IP}"

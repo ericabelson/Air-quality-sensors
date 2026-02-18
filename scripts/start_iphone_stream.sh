@@ -49,12 +49,23 @@ RTSP_URL="rtsp://${IPHONE_IP}:${RTSP_PORT}/live.sdp"
 DEVICE="hw:${CARD},0"
 
 echo "Starting iPhone audio stream..."
-echo "  RTSP URL: $RTSP_URL"
-echo "  Output:   $DEVICE (card $CARD)"
+echo "  RTSP URL:   $RTSP_URL"
+echo "  Output:     $DEVICE (card $CARD)"
+echo "  Transport:  TCP (reliable for WiFi)"
 
 # exec replaces this shell with FFmpeg so systemd tracks the right PID
+#
+# Transport: TCP is far more reliable than UDP for persistent RTSP over WiFi.
+# UDP drops packets silently and FFmpeg hangs for 2+ minutes before timing out.
+# TCP detects connection loss quickly and lets systemd restart us.
+#
+# Timeouts (in microseconds):
+#   -stimeout  10000000  = 10s RTSP socket timeout (connect + setup)
+#   -rw_timeout 5000000  = 5s  read/write timeout (during streaming)
+#
 exec /usr/bin/ffmpeg \
-    -rtsp_transport udp \
+    -rtsp_transport tcp \
+    -stimeout 10000000 \
     -rw_timeout 5000000 \
     -i "$RTSP_URL" \
     -vn \
