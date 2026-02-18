@@ -59,16 +59,12 @@ echo "  Transport:  TCP (reliable for WiFi)"
 # UDP drops packets silently and FFmpeg hangs for 2+ minutes before timing out.
 # TCP detects connection loss quickly and lets systemd restart us.
 #
-# Timeout (in microseconds):
-#   -timeout 10000000  = 10s RTSP socket timeout (connect + setup)
-#                        (renamed from -stimeout in FFmpeg 7.x)
-#
-# Note: -rw_timeout was also removed in FFmpeg 7.x. TCP transport
-# handles stream-drop detection natively, so it's not needed.
+# No custom timeouts: FFmpeg 7.x removed -stimeout and -rw_timeout, and
+# the replacement -timeout internally triggers rw_timeout which is also gone.
+# TCP + systemd Restart=always is sufficient for recovery.
 #
 exec /usr/bin/ffmpeg \
     -rtsp_transport tcp \
-    -timeout 10000000 \
     -i "$RTSP_URL" \
     -vn \
     -acodec pcm_s16le \
