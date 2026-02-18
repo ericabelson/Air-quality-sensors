@@ -46,7 +46,10 @@ fi
 
 RTSP_PORT="${RTSP_PORT:-8554}"
 RTSP_URL="rtsp://${IPHONE_IP}:${RTSP_PORT}/live.sdp"
-DEVICE="hw:${CARD},0"
+# Use plughw instead of hw — the raw hw device only accepts formats that
+# match the read side exactly.  plughw adds an ALSA conversion layer so
+# FFmpeg can write mono/16 kHz and the loopback transparently resamples.
+DEVICE="plughw:${CARD},0"
 
 echo "Starting iPhone audio stream..."
 echo "  RTSP URL:   $RTSP_URL"
