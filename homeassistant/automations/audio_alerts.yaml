@@ -157,6 +157,45 @@
         message: >
           {{ trigger.payload_json.common_name }} detected
 
+# Alert if BirdNET analyzer goes offline
+- id: 'birdnet_offline_alert'
+  alias: "Alert: BirdNET Offline"
+  description: "Notify if BirdNET analyzer stops responding"
+  trigger:
+    - platform: state
+      entity_id: sensor.birdnet_status
+      to: 'offline'
+      for:
+        minutes: 5
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "BirdNET Analyzer Offline"
+        message: >
+          BirdNET bird detection has been offline for 5 minutes.
+          Check: sudo systemctl status birdnet_analyzer
+        notification_id: "birdnet_offline"
+
+# Alert when BirdNET comes back online
+- id: 'birdnet_online_notification'
+  alias: "Notify: BirdNET Online"
+  description: "Notify when BirdNET reconnects"
+  trigger:
+    - platform: state
+      entity_id: sensor.birdnet_status
+      to: 'online'
+  condition:
+    - condition: template
+      value_template: >
+        {{ trigger.from_state.state == 'offline' }}
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "BirdNET Analyzer Online"
+        message: >
+          BirdNET bird detection is back online and monitoring.
+        notification_id: "birdnet_online"
+
 # ============================================================================
 # DAILY REPORTS
 # ============================================================================
@@ -312,9 +351,9 @@ shell_command:
   restart_bark_detector: >
     sudo systemctl restart dog_bark_detector
 
-  # Restart BirdNET
+  # Restart BirdNET Analyzer
   restart_birdnet: >
-    sudo systemctl restart birdnet
+    sudo systemctl restart birdnet_analyzer
 
 # ============================================================================
 # NOTIFY PLATFORMS

@@ -44,12 +44,13 @@ except ImportError as e:
     sys.exit(1)
 
 # TensorFlow Lite import
+# Uses ai-edge-litert (~12 MB) via tflite_runtime shim instead of
+# full tensorflow (~260 MB).  The shim is created by install_birdnet.sh.
 try:
-    import tensorflow as tf
-    from tensorflow import lite
+    from tflite_runtime.interpreter import Interpreter as TFLiteInterpreter
 except ImportError:
-    print("Error: TensorFlow not installed")
-    print("pip install tensorflow==2.13.0")
+    print("Error: tflite_runtime not available")
+    print("Run: ./scripts/install_birdnet.sh")
     sys.exit(1)
 
 # ============================================================================
@@ -57,29 +58,40 @@ except ImportError:
 # ============================================================================
 
 # Audio Settings
-AUDIO_DEVICE_INDEX = None  # None = default device, or specify device number
-SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz)
+# Use PulseAudio (default device) so both this detector and BirdNET can share
+# the same loopback source. PulseAudio handles resampling from 48kHz to 16kHz.
+AUDIO_DEVICE_INDEX = None  # None = PulseAudio default source (shared with BirdNET)
+SAMPLE_RATE = 16000  # Hz (YAMNet requires 16kHz; PulseAudio resamples from device rate)
 CHANNELS = 1  # Mono
-CHUNK_DURATION = 1.0  # seconds per analysis chunk
-CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)
+CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
-DOG_BARK_CONFIDENCE_THRESHOLD = 0.70  # 70% confidence minimum
+DOG_BARK_CONFIDENCE_THRESHOLD = 0.40  # Balanced for iPhone audio quality (8kHz G.711)
+BARK_COOLDOWN_SECONDS = 30  # Publish "not barking" after this many seconds of no bark
+MIN_CLASSIFY_DB = 35  # Don't classify audio below this dB (silence/near-silence)
 DOG_BARK_CLASS_NAMES = [
-    "Animal",
-    "Domestic animals, pets",
     "Dog",
     "Bark",
     "Bow-wow",
     "Growling",
     "Whimper",
-    "Howl"
+    "Howl",
+    "Domestic animals, pets",
 ]
 
 # Decibel Settings
-REFERENCE_PRESSURE = 20e-6  # 20 micropascals (standard reference for dB SPL)
+# Audio is raw int16 samples (0-32768), not calibrated Pascals.
+# We use dBFS (full-scale) + offset to approximate SPL.
+# 90 dB offset maps: quiet room ~35 dB, talking ~60 dB, loud bark ~80 dB
+DBFS_OFFSET = 90  # dBFS-to-SPL approximation offset
+INT16_MAX = 32768.0  # Full-scale reference for 16-bit audio
 MIN_DB = 30  # Minimum decibel threshold to consider
 MAX_DB = 120  # Maximum decibel (for safety)
+
+# Silence Detection Settings
+SILENCE_THRESHOLD_DB = 32  # dB level below which audio is considered silence
+SILENCE_ALERT_SECONDS = 60  # Alert after this many seconds of continuous silence
+SILENCE_CHECK_INTERVAL = 30  # Check for silence every N seconds
 
 # Event Grouping Settings
 GAP_5MIN = 300  # 5 minutes in seconds
@@ -94,18 +106,43 @@ MQTT_TOPIC_STATUS = "audio/detector_status"
 MQTT_TOPIC_STATS = "audio/bark_stats"
 MQTT_TOPIC_LAST_DETECTION = "audio/last_detection"
 MQTT_TOPIC_MIC_STATUS = "audio/microphone_status"
+MQTT_TOPIC_MONITOR_ACTIVE = "audio/monitor_active"  # Whether detector is actively monitoring
+MQTT_TOPIC_STORAGE_STATUS = "audio/storage_status"  # USB drive / recording storage health
 
 # File Paths
 BASE_DIR = os.path.expanduser("~/audio_detection")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "yamnet.tflite")
 LABELS_PATH = os.path.join(BASE_DIR, "models", "yamnet_class_map.csv")
-RECORDING_DIR = "/mnt/usb/bark_audio/recordings"
+
+# Recording Storage
+# Prefer USB drive for MP3 recordings (saves SD card wear). Fall back to local.
+# CSV data always goes to BASE_DIR regardless of USB status.
+USB_MOUNT_PATH = "/mnt/usb/bark_audio/recordings"
+LOCAL_RECORDING_PATH = os.path.join(BASE_DIR, "recordings")
+USB_CHECK_INTERVAL = 300  # Re-check USB availability every 5 minutes
+
+def is_usb_available():
+    """Check if USB drive is mounted and writable"""
+    return os.path.ismount("/mnt/usb") and os.access("/mnt/usb", os.W_OK)
+
+def get_recording_dir():
+    """Determine the best recording directory to use"""
+    if is_usb_available():
+        return USB_MOUNT_PATH
+    return LOCAL_RECORDING_PATH
+
+RECORDING_DIR = get_recording_dir()
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # Storage Management
-MAX_STORAGE_PERCENT = 95  # Use up to 95% of 1TB before cleanup
+MAX_RECORDING_MB = 2000  # Maximum MB for audio recordings (FIFO: oldest deleted first)
 AUDIO_QUALITY = "32k"  # Very low quality MP3 for minimal size
+
+# Raw Event Log - every individual bark detection with timestamp
+RAW_EVENTS_CSV = os.path.join(DATA_DIR, "bark_events_raw.csv")
+# Uptime/Downtime Log - tracks when the monitor starts, stops, and gaps
+UPTIME_LOG_CSV = os.path.join(DATA_DIR, "monitor_uptime.csv")
 
 # Create directories if they don't exist
 for directory in [LOG_DIR, DATA_DIR, RECORDING_DIR]:
@@ -193,7 +230,7 @@ class DogBarkClassifier:
 
         # Load TFLite model
         try:
-            self.interpreter = tf.lite.Interpreter(model_path=model_path)
+            self.interpreter = TFLiteInterpreter(model_path=model_path)
             self.interpreter.allocate_tensors()
 
             # Get input and output details
@@ -213,16 +250,23 @@ class DogBarkClassifier:
         logger.info(f"Loaded {len(self.class_names)} class labels")
 
     def _load_labels(self, labels_path):
-        """Load YAMNet class labels from CSV"""
+        """Load YAMNet class labels from CSV.
+
+        The yamnet_class_map.csv has columns: index, mid, display_name
+        We need the display_name (column 2), not the mid (column 1).
+        """
+        import csv
         class_names = []
         try:
             with open(labels_path, 'r') as f:
-                # Skip header
-                next(f)
-                for line in f:
-                    parts = line.strip().split(',')
-                    if len(parts) >= 2:
-                        class_names.append(parts[1].strip('"'))
+                reader = csv.reader(f)
+                next(reader)  # Skip header
+                for row in reader:
+                    if len(row) >= 3:
+                        class_names.append(row[2].strip())
+                    elif len(row) >= 2:
+                        class_names.append(row[1].strip())
+            logger.info(f"Sample labels: {class_names[:5]}")
             return class_names
         except Exception as e:
             logger.error(f"Error loading labels: {e}")
@@ -239,15 +283,24 @@ class DogBarkClassifier:
             dict with top predictions and confidence scores
         """
         try:
-            # Ensure correct shape and type
+            # Ensure correct type
             audio_data = audio_data.astype(np.float32)
 
-            # Normalize audio to [-1, 1]
-            if np.max(np.abs(audio_data)) > 0:
-                audio_data = audio_data / np.max(np.abs(audio_data))
+            # Normalize to [-1, 1] using fixed int16 reference (not signal max).
+            # Using np.max(np.abs(audio_data)) would amplify silence to full scale,
+            # causing YAMNet to classify noise artifacts as real sounds.
+            audio_data = audio_data / INT16_MAX
 
-            # Reshape for model input
-            audio_data = np.expand_dims(audio_data, axis=0)
+            # Flatten to 1D if needed (YAMNet expects 1D input)
+            audio_data = audio_data.flatten()
+
+            # Ensure we have exactly 15600 samples (YAMNet model requirement)
+            if len(audio_data) < 15600:
+                # Pad with zeros if too short
+                audio_data = np.pad(audio_data, (0, 15600 - len(audio_data)))
+            elif len(audio_data) > 15600:
+                # Truncate if too long
+                audio_data = audio_data[:15600]
 
             # Set input tensor
             self.interpreter.set_tensor(self.input_details[0]['index'], audio_data)
@@ -302,13 +355,17 @@ class DogBarkClassifier:
 
 def calculate_decibels(audio_data):
     """
-    Calculate decibel level (dB SPL) from audio data
+    Calculate approximate dB SPL from raw int16 audio samples.
+
+    Uses dBFS (decibels relative to full-scale) plus an offset to
+    approximate real-world SPL. Without a calibrated microphone,
+    absolute values are estimates, but relative changes are accurate.
 
     Args:
-        audio_data: numpy array of audio samples
+        audio_data: numpy array of int16 audio samples (as float32)
 
     Returns:
-        float: decibel level
+        float: approximate decibel level (SPL)
     """
     # Calculate RMS (Root Mean Square) amplitude
     rms = np.sqrt(np.mean(audio_data**2))
@@ -317,9 +374,11 @@ def calculate_decibels(audio_data):
     if rms < 1e-10:
         return MIN_DB
 
-    # Convert to decibels SPL (Sound Pressure Level)
-    # dB = 20 * log10(rms / reference)
-    db = 20 * np.log10(rms / REFERENCE_PRESSURE)
+    # Normalize to 0-1 range (int16 full scale = 32768)
+    # Then convert to dBFS and add offset to approximate SPL
+    # dBFS = 20 * log10(rms / 32768)  → range: -90 to 0
+    # dB SPL ≈ dBFS + 90              → range: ~0 to 90
+    db = 20 * np.log10(rms / INT16_MAX) + DBFS_OFFSET
 
     # Clamp to reasonable range
     db = max(MIN_DB, min(MAX_DB, db))
@@ -333,15 +392,18 @@ def calculate_decibels(audio_data):
 class AudioRecorder:
     """Records audio clips of bark events"""
 
-    def __init__(self, recording_dir):
+    def __init__(self, recording_dir, mqtt_publisher=None):
         self.recording_dir = recording_dir
         self.is_recording = False
         self.recording_buffer = []
         self.recording_start_time = None
         self.last_cleanup_check = datetime.now()
+        self.last_usb_check = datetime.now()
+        self.usb_connected = is_usb_available()
+        self.mqtt = mqtt_publisher
 
     def check_storage_and_cleanup(self):
-        """Check storage usage and delete oldest files if over threshold"""
+        """Delete oldest recordings when total exceeds MAX_RECORDING_MB"""
         # Only check every 10 minutes to reduce disk I/O
         if (datetime.now() - self.last_cleanup_check).total_seconds() < 600:
             return
@@ -349,35 +411,34 @@ class AudioRecorder:
         self.last_cleanup_check = datetime.now()
 
         try:
-            import shutil
+            # Get all MP3 files with their modification times and sizes
+            files = []
+            total_bytes = 0
+            for root, dirs, filenames in os.walk(self.recording_dir):
+                for filename in filenames:
+                    if filename.endswith('.mp3'):
+                        filepath = os.path.join(root, filename)
+                        mtime = os.path.getmtime(filepath)
+                        size = os.path.getsize(filepath)
+                        files.append((filepath, mtime, size))
+                        total_bytes += size
 
-            # Get storage stats for the mount point
-            stats = shutil.disk_usage(self.recording_dir)
-            usage_percent = (stats.used / stats.total) * 100
+            total_mb = total_bytes / (1024 * 1024)
+            max_bytes = MAX_RECORDING_MB * 1024 * 1024
 
-            if usage_percent > MAX_STORAGE_PERCENT:
-                logger.warning(f"Storage at {usage_percent:.1f}% - cleaning up old recordings")
-
-                # Get all MP3 files with their modification times
-                files = []
-                for root, dirs, filenames in os.walk(self.recording_dir):
-                    for filename in filenames:
-                        if filename.endswith('.mp3'):
-                            filepath = os.path.join(root, filename)
-                            mtime = os.path.getmtime(filepath)
-                            size = os.path.getsize(filepath)
-                            files.append((filepath, mtime, size))
+            if total_bytes > max_bytes:
+                logger.warning(f"Recordings at {total_mb:.0f} MB (limit: {MAX_RECORDING_MB} MB) - cleaning up oldest")
 
                 # Sort by modification time (oldest first)
                 files.sort(key=lambda x: x[1])
 
-                # Delete oldest files until we're under 90% usage
-                bytes_to_free = stats.total * 0.05  # Free up 5% of space
+                # Delete oldest files until under limit
                 bytes_freed = 0
                 files_deleted = 0
+                target_free = total_bytes - max_bytes + (max_bytes * 0.1)  # Free to 90% of limit
 
                 for filepath, mtime, size in files:
-                    if bytes_freed >= bytes_to_free:
+                    if bytes_freed >= target_free:
                         break
                     try:
                         os.remove(filepath)
@@ -387,9 +448,39 @@ class AudioRecorder:
                         logger.error(f"Error deleting {filepath}: {e}")
 
                 logger.info(f"Cleanup complete: deleted {files_deleted} files, freed {bytes_freed / 1024 / 1024:.1f} MB")
+            else:
+                logger.info(f"Recording storage: {total_mb:.0f} MB / {MAX_RECORDING_MB} MB ({len(files)} files)")
 
         except Exception as e:
             logger.error(f"Error during storage cleanup: {e}")
+
+    def check_usb_status(self, force=False):
+        """Periodically re-check USB drive and switch recording directory if needed"""
+        if not force and (datetime.now() - self.last_usb_check).total_seconds() < USB_CHECK_INTERVAL:
+            return
+        self.last_usb_check = datetime.now()
+
+        usb_now = is_usb_available()
+        new_dir = get_recording_dir()
+
+        if usb_now != self.usb_connected:
+            # USB status changed
+            self.usb_connected = usb_now
+            self.recording_dir = new_dir
+            os.makedirs(self.recording_dir, exist_ok=True)
+
+            if usb_now:
+                logger.info(f"USB drive reconnected - recordings now going to {new_dir}")
+            else:
+                logger.warning(f"USB drive disconnected - recordings falling back to {new_dir}")
+
+        if self.mqtt:
+            details = ""
+            if not usb_now:
+                details = ("USB drive not mounted at /mnt/usb. "
+                           "Recordings are saving to SD card. "
+                           "Plug in USB drive and mount it to preserve SD card life.")
+            self.mqtt.publish_storage_status(usb_now, new_dir, details)
 
     def start_recording(self):
         """Start recording audio"""
@@ -483,6 +574,30 @@ class MQTTPublisher:
         logger.warning("Disconnected from MQTT broker")
         self.connected = False
 
+    @staticmethod
+    def _convert_numpy(obj):
+        """Convert numpy types to native Python for JSON serialization"""
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    # Topics whose last value should be retained by the MQTT broker so that
+    # Home Assistant sensors recover immediately after an HA restart without
+    # waiting for the next publish from the detector.
+    RETAINED_TOPICS = {
+        MQTT_TOPIC_BARK,
+        MQTT_TOPIC_STATUS,
+        MQTT_TOPIC_STATS,
+        MQTT_TOPIC_LAST_DETECTION,
+        MQTT_TOPIC_MIC_STATUS,
+        MQTT_TOPIC_MONITOR_ACTIVE,
+        MQTT_TOPIC_STORAGE_STATUS,
+    }
+
     def publish(self, topic, payload):
         """Publish message to MQTT topic"""
         if not self.connected:
@@ -491,8 +606,9 @@ class MQTTPublisher:
 
         try:
             if isinstance(payload, dict):
-                payload = json.dumps(payload)
-            self.client.publish(topic, payload)
+                payload = json.dumps(payload, default=self._convert_numpy)
+            retain = topic in self.RETAINED_TOPICS
+            self.client.publish(topic, payload, retain=retain)
         except Exception as e:
             logger.error(f"Error publishing to MQTT: {e}")
 
@@ -549,6 +665,17 @@ class MQTTPublisher:
         }
         self.publish(MQTT_TOPIC_MIC_STATUS, payload)
 
+    def publish_storage_status(self, usb_connected, recording_dir, details=None):
+        """Publish recording storage status"""
+        payload = {
+            'usb_connected': usb_connected,
+            'recording_path': recording_dir,
+            'status': 'usb' if usb_connected else 'local_fallback',
+            'timestamp': datetime.now().isoformat(),
+            'details': details or ''
+        }
+        self.publish(MQTT_TOPIC_STORAGE_STATUS, payload)
+
 # ============================================================================
 # MAIN DETECTOR
 # ============================================================================
@@ -562,7 +689,7 @@ class DogBarkDetector:
 
         self.classifier = DogBarkClassifier(MODEL_PATH, LABELS_PATH)
         self.mqtt = MQTTPublisher(MQTT_BROKER, MQTT_PORT)
-        self.recorder = AudioRecorder(RECORDING_DIR)
+        self.recorder = AudioRecorder(RECORDING_DIR, self.mqtt)
 
         # Event tracking
         self.all_events = []
@@ -573,12 +700,24 @@ class DogBarkDetector:
         self.last_bark_time = None
         self.last_bark_confidence = 0
         self.last_bark_decibels = 0
+        self.bark_active = False  # True when actively barking, False after cooldown
 
         # Microphone health monitoring
         self.last_audio_received = datetime.now()
         self.last_mqtt_update = datetime.now()
         self.consecutive_read_errors = 0
         self.mic_status = 'starting'
+        self.monitor_active = False  # Published to MQTT so HA knows we're running
+
+        # Initialize raw event CSV (individual bark log)
+        self._init_raw_event_csv()
+        # Log startup in uptime log
+        self._log_uptime_event('start')
+
+        # Silence detection - detect when mic is connected but getting no real audio
+        self.silence_start_time = None
+        self.last_silence_check = datetime.now()
+        self.silence_alerted = False
 
         # Statistics
         self.daily_stats = {
@@ -594,11 +733,106 @@ class DogBarkDetector:
         self.audio = pyaudio.PyAudio()
         self.stream = None
 
+        # Publish initial USB storage status
+        usb_ok = is_usb_available()
+        if usb_ok:
+            logger.info(f"Recording to USB drive: {RECORDING_DIR}")
+        else:
+            logger.warning(f"USB drive not mounted - recording to SD card: {RECORDING_DIR}")
+        self.recorder.check_usb_status(force=True)
+
         logger.info("Initialization complete!")
+
+    def _init_raw_event_csv(self):
+        """Initialize raw bark event CSV with header if it doesn't exist"""
+        if not os.path.exists(RAW_EVENTS_CSV):
+            with open(RAW_EVENTS_CSV, 'w') as f:
+                f.write("timestamp,date,time,confidence,decibels,class,duration_estimate_sec\n")
+            logger.info(f"Created raw event log: {RAW_EVENTS_CSV}")
+
+    def _log_raw_bark_event(self, event, class_name):
+        """Log individual bark detection to raw CSV"""
+        try:
+            with open(RAW_EVENTS_CSV, 'a') as f:
+                ts = event.timestamp
+                # Duration estimate: each chunk is ~1 second of audio
+                f.write(f"{ts.isoformat()},{ts.strftime('%Y-%m-%d')},{ts.strftime('%H:%M:%S')},"
+                        f"{event.confidence:.3f},{event.decibels:.1f},{class_name},1\n")
+        except Exception as e:
+            logger.error(f"Error writing raw event CSV: {e}")
+
+    def _log_uptime_event(self, event_type, details=''):
+        """Log monitor start/stop/gap events to uptime CSV"""
+        try:
+            if not os.path.exists(UPTIME_LOG_CSV):
+                with open(UPTIME_LOG_CSV, 'w') as f:
+                    f.write("timestamp,event,details\n")
+            with open(UPTIME_LOG_CSV, 'a') as f:
+                f.write(f"{datetime.now().isoformat()},{event_type},{details}\n")
+            logger.info(f"Uptime event logged: {event_type} {details}")
+        except Exception as e:
+            logger.error(f"Error writing uptime log: {e}")
+
+    def _publish_monitor_active(self, active):
+        """Publish whether the monitor is actively recording"""
+        self.monitor_active = active
+        self.mqtt.publish(MQTT_TOPIC_MONITOR_ACTIVE, {
+            'active': active,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    def _find_audio_device(self):
+        """Find the ALSA loopback capture device (hw:X,1) by name.
+
+        Reads directly from the ALSA loopback capture subdevice rather than
+        relying on PipeWire/PulseAudio default source, which does not expose
+        the loopback after a reboot (module-alsa-source is unsupported by
+        PipeWire's PulseAudio compat layer). The loopback card name is stable
+        even when the card number changes between reboots. ALSA loopback
+        device 1 has 8 subdevices, so multiple readers (bark detector +
+        BirdNET) can connect simultaneously without conflict.
+
+        Returns the PyAudio device index to use, or None to fall back to default.
+        """
+        device_count = self.audio.get_device_count()
+        input_devices = []
+        loopback_capture_idx = None
+
+        for i in range(device_count):
+            info = self.audio.get_device_info_by_index(i)
+            if info.get('maxInputChannels', 0) > 0:
+                input_devices.append((i, info['name']))
+                name = info['name']
+                # Loopback capture side is hw:X,1 — device number ends in ,1)
+                if 'Loopback' in name and name.endswith(',1)'):
+                    loopback_capture_idx = i
+
+        logger.info(f"Found {len(input_devices)} input device(s):")
+        for idx, name in input_devices:
+            marker = " <-- selected" if idx == loopback_capture_idx else ""
+            logger.info(f"  [{idx}] {name}{marker}")
+
+        if loopback_capture_idx is not None:
+            name = self.audio.get_device_info_by_index(loopback_capture_idx)['name']
+            logger.info(f"Using ALSA loopback capture device [{loopback_capture_idx}] {name}")
+        else:
+            logger.warning("Loopback capture device not found — falling back to system default")
+            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
+            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
+
+        if not input_devices:
+            logger.warning("NO INPUT AUDIO DEVICES FOUND!")
+            self.mqtt.publish_mic_status('no_device',
+                'No audio input devices found - check snd-aloop and iphone-audio-stream')
+
+        return loopback_capture_idx
 
     def start(self):
         """Start the detection system"""
         logger.info("Starting dog bark detection...")
+
+        # Find loopback device
+        device_index = self._find_audio_device()
 
         # Open audio stream
         try:
@@ -607,7 +841,7 @@ class DogBarkDetector:
                 channels=CHANNELS,
                 rate=SAMPLE_RATE,
                 input=True,
-                input_device_index=AUDIO_DEVICE_INDEX,
+                input_device_index=device_index,
                 frames_per_buffer=CHUNK_SIZE
             )
             logger.info(f"Audio stream opened (sample rate: {SAMPLE_RATE} Hz)")
@@ -617,7 +851,11 @@ class DogBarkDetector:
             for i in range(self.audio.get_device_count()):
                 info = self.audio.get_device_info_by_index(i)
                 logger.error(f"  {i}: {info['name']}")
+            self.mqtt.publish_mic_status('error', f'Failed to open audio stream: {e}')
             raise
+
+        # Mark monitor as actively recording
+        self._publish_monitor_active(True)
 
         # Start detection loop
         try:
@@ -633,7 +871,7 @@ class DogBarkDetector:
 
         while True:
             try:
-                # Read audio chunk
+                # Read audio chunk (PulseAudio resamples to 16kHz for us)
                 audio_bytes = self.stream.read(CHUNK_SIZE, exception_on_overflow=False)
                 audio_data = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
 
@@ -645,6 +883,9 @@ class DogBarkDetector:
                 if self.mic_status != 'online':
                     self.mic_status = 'online'
                     self.mqtt.publish_mic_status('online', 'Audio stream restored')
+                    if not self.monitor_active:
+                        self._publish_monitor_active(True)
+                        self._log_uptime_event('resume', 'Audio stream restored')
                     logger.info("Microphone back online")
 
                 # Calculate decibels
@@ -654,11 +895,62 @@ class DogBarkDetector:
                 if int(time.time()) % 1 == 0:
                     self.mqtt.publish_decibels(decibels)
 
+                # Silence detection - catch the case where stream is open but reading dead air
+                if decibels <= SILENCE_THRESHOLD_DB:
+                    if self.silence_start_time is None:
+                        self.silence_start_time = datetime.now()
+                    silence_duration = (datetime.now() - self.silence_start_time).total_seconds()
+
+                    # Periodic silence check to avoid log spam
+                    time_since_silence_check = (datetime.now() - self.last_silence_check).total_seconds()
+                    if silence_duration >= SILENCE_ALERT_SECONDS and time_since_silence_check >= SILENCE_CHECK_INTERVAL:
+                        self.last_silence_check = datetime.now()
+                        if not self.silence_alerted:
+                            self.silence_alerted = True
+                            self.mic_status = 'silence'
+                            self._publish_monitor_active(False)
+                            self._log_uptime_event('silence', f'No real audio for {int(silence_duration)}s')
+                            logger.warning(
+                                f"SILENCE DETECTED: Audio stuck at {decibels:.0f} dB for "
+                                f"{int(silence_duration)}s. No real audio is being captured!"
+                            )
+                            logger.warning("Possible causes:")
+                            logger.warning("  - ALSA loopback not loaded (sudo modprobe snd-aloop)")
+                            logger.warning("  - iphone-audio-stream service not running")
+                            logger.warning("  - iPhone Periscope HD app not streaming")
+                            logger.warning("  - Wrong audio device selected")
+                            self.mqtt.publish_mic_status(
+                                'silence',
+                                f'No real audio - constant {decibels:.0f} dB for {int(silence_duration)}s. '
+                                f'Check: snd-aloop module, iphone-audio-stream service, Periscope HD app'
+                            )
+                        elif int(silence_duration) % 300 == 0:
+                            # Re-alert every 5 minutes of continuous silence
+                            logger.warning(
+                                f"Still silent: {int(silence_duration)}s of silence "
+                                f"({int(silence_duration / 60)} min)"
+                            )
+                            self.mqtt.publish_mic_status(
+                                'silence',
+                                f'Continuous silence for {int(silence_duration / 60)} min. '
+                                f'No audio input device providing real audio.'
+                            )
+                else:
+                    # Real audio detected - reset silence tracking
+                    if self.silence_alerted:
+                        logger.info(f"Audio restored - silence ended after "
+                                    f"{int((datetime.now() - self.silence_start_time).total_seconds())}s")
+                        self.mqtt.publish_mic_status('online', 'Real audio detected - silence ended')
+                    self.silence_start_time = None
+                    self.silence_alerted = False
+
                 # Check microphone health (every 30 seconds)
                 time_since_audio = (datetime.now() - self.last_audio_received).total_seconds()
                 if time_since_audio > 30:
                     if self.mic_status != 'no_data':
                         self.mic_status = 'no_data'
+                        self._publish_monitor_active(False)
+                        self._log_uptime_event('no_data', f'No audio for {int(time_since_audio)}s')
                         self.mqtt.publish_mic_status('no_data', f'No audio for {int(time_since_audio)}s')
                         logger.error(f"Microphone offline - no audio data for {int(time_since_audio)} seconds")
 
@@ -672,18 +964,35 @@ class DogBarkDetector:
                     )
                     self.last_mqtt_update = datetime.now()
 
-                # Classify audio
-                predictions = self.classifier.classify_audio(audio_data)
+                # Periodically check USB drive status and switch recording dir if needed
+                self.recorder.check_usb_status()
+
+                # Skip classification if audio is too quiet (silence/no input)
+                if decibels <= MIN_CLASSIFY_DB:
+                    predictions = []
+                else:
+                    # Classify audio
+                    predictions = self.classifier.classify_audio(audio_data)
+
+                # Log top predictions periodically for debugging
+                if predictions and int(time.time()) % 5 == 0:
+                    top3 = predictions[:3]
+                    top_str = ", ".join(f"{p['class']}:{p['confidence']:.3f}" for p in top3)
+                    logger.info(f"[DEBUG] dB={decibels:.1f} top3=[{top_str}]")
 
                 # Check for dog bark
                 is_bark, confidence, class_name = self.classifier.is_dog_bark(predictions)
 
                 if is_bark:
+                    self.bark_active = True
                     # Create bark event
                     event = BarkEvent(datetime.now(), confidence, decibels)
                     self.all_events.append(event)
 
                     logger.info(f"🐕 DOG BARK DETECTED - Confidence: {confidence:.2f} - Decibels: {decibels:.1f}dB - Class: {class_name}")
+
+                    # Log to raw event CSV (permanent record)
+                    self._log_raw_bark_event(event, class_name)
 
                     # Publish to MQTT (real-time)
                     self.mqtt.publish_bark_event(event, True, class_name)
@@ -702,6 +1011,20 @@ class DogBarkDetector:
                     # Record audio
                     if not self.recorder.is_recording:
                         self.recorder.start_recording()
+
+                # Bark cooldown - publish "not barking" when barking stops
+                elif self.bark_active and self.last_bark_time:
+                    time_since_bark = (datetime.now() - self.last_bark_time).total_seconds()
+                    if time_since_bark > BARK_COOLDOWN_SECONDS:
+                        self.bark_active = False
+                        self.mqtt.publish(MQTT_TOPIC_BARK, {
+                            'timestamp': datetime.now().isoformat(),
+                            'detected': False,
+                            'confidence': 0.0,
+                            'decibels': float(decibels),
+                            'class': ''
+                        })
+                        logger.info("Bark cooldown: published 'not barking' state")
 
                 # Add to recording buffer if recording
                 if self.recorder.is_recording:
@@ -724,6 +1047,8 @@ class DogBarkDetector:
                 if self.consecutive_read_errors > 10:
                     if self.mic_status != 'error':
                         self.mic_status = 'error'
+                        self._publish_monitor_active(False)
+                        self._log_uptime_event('error', f'Consecutive read errors: {self.consecutive_read_errors}')
                         self.mqtt.publish_mic_status('error', f'Consecutive read errors: {self.consecutive_read_errors}')
                         logger.error("Too many audio read errors - microphone may be offline")
 
@@ -812,6 +1137,10 @@ class DogBarkDetector:
     def stop(self):
         """Stop the detection system"""
         logger.info("Stopping detection system...")
+
+        # Mark monitor as inactive and log shutdown
+        self._publish_monitor_active(False)
+        self._log_uptime_event('stop')
 
         # Save final groups
         if self.current_group_5min:

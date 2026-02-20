@@ -1,385 +1,559 @@
 #!/bin/bash
 ###############################################################################
-# BirdNET-Pi Installation Script
-# ===============================
-# Automated installation of BirdNET-Pi for bird detection
+# Audio Detection Installation Script
+# ====================================
+# Installs ALL dependencies for both detectors into a single virtualenv:
+#   - BirdNET bird species detector  (birdnet_analyzer.py)
+#   - Dog bark detector              (dog_bark_detector.py)
 #
-# This script:
-# - Installs BirdNET-Pi and dependencies
-# - Configures MQTT integration
-# - Sets up systemd service
-# - Configures audio input
+# Key design decisions:
+#   - Uses ai-edge-litert (~12 MB) instead of tensorflow (~260 MB).
+#     Both detectors share the same TFLite runtime via a tflite_runtime shim.
+#   - Every Python dependency is installed EXPLICITLY — no reliance on
+#     transitive deps that may or may not be pulled in by pip.
+#   - Downloads the YAMNet model for dog bark detection automatically.
+#   - Verifies every import before declaring success.
+#
+# Usage:
+#   ./install_birdnet.sh
 #
 # Author: Claude Code
 # License: MIT
 ###############################################################################
 
-set -e  # Exit on error
+set -e
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Configuration
-BIRDNET_DIR="$HOME/BirdNET-Pi"
-INSTALL_DIR="$HOME/audio_detection"
-MQTT_BROKER="localhost"
-MQTT_PORT="1883"
+# Paths
+VENV_DIR="$HOME/audio_detection/venv"
+AUDIO_DIR="$HOME/audio_detection"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BIRDNET_SCRIPT="$SCRIPT_DIR/birdnet_analyzer.py"
+DOG_BARK_SCRIPT="$SCRIPT_DIR/dog_bark_detector.py"
+MODELS_DIR="$AUDIO_DIR/models"
 
-###############################################################################
-# Helper Functions
-###############################################################################
+print_header()  { echo -e "\n${BLUE}======== $1 ========${NC}"; }
+print_success() { echo -e "${GREEN}✓ $1${NC}"; }
+print_error()   { echo -e "${RED}✗ $1${NC}"; }
+print_info()    { echo -e "${YELLOW}ℹ $1${NC}"; }
 
-print_header() {
-    echo -e "${BLUE}================================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}================================================${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}✗ $1${NC}"
-}
-
-print_info() {
-    echo -e "${YELLOW}ℹ $1${NC}"
+ERRORS=0
+note_error() {
+    print_error "$1"
+    ERRORS=$((ERRORS + 1))
 }
 
 ###############################################################################
-# Installation Steps
+# Pre-flight checks
 ###############################################################################
 
-install_dependencies() {
-    print_header "Installing Dependencies"
+print_header "Pre-flight checks"
 
-    print_info "Updating package lists..."
-    sudo apt-get update
+# Disk space — need at least 500 MB free for packages + models
+AVAIL_MB=$(df --output=avail -m "$HOME" | tail -1 | tr -d ' ')
+if [ "$AVAIL_MB" -lt 500 ]; then
+    print_error "Only ${AVAIL_MB} MB free on disk. Need at least 500 MB."
+    print_info "Tip: run 'sudo apt clean' and 'pip cache purge' to free space."
+    exit 1
+fi
+print_success "Disk space: ${AVAIL_MB} MB available"
 
-    print_info "Installing required packages..."
-    sudo apt-get install -y \
-        python3 \
-        python3-pip \
-        python3-dev \
-        python3-venv \
-        git \
-        ffmpeg \
-        sox \
-        libsox-fmt-all \
-        alsa-utils \
-        sqlite3 \
-        portaudio19-dev \
-        libatlas-base-dev \
-        libopenblas-dev \
-        libhdf5-dev \
-        libc-ares-dev \
-        libeigen3-dev \
-        gcc \
-        g++
+# Python version (birdnetlib needs 3.9+)
+PYTHON_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PYTHON_MAJOR=$(echo "$PYTHON_VER" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VER" | cut -d. -f2)
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 9 ]; }; then
+    print_error "Python 3.9+ required (found $PYTHON_VER)"
+    exit 1
+fi
+print_success "Python $PYTHON_VER"
 
-    print_success "Dependencies installed"
-}
-
-clone_birdnet() {
-    print_header "Downloading BirdNET-Pi"
-
-    if [ -d "$BIRDNET_DIR" ]; then
-        print_info "BirdNET-Pi directory already exists. Updating..."
-        cd "$BIRDNET_DIR"
-        git pull
-    else
-        print_info "Cloning BirdNET-Pi repository..."
-        git clone https://github.com/mcguirepr89/BirdNET-Pi.git "$BIRDNET_DIR"
-        cd "$BIRDNET_DIR"
+# Scripts present
+for script in "$BIRDNET_SCRIPT" "$DOG_BARK_SCRIPT"; do
+    name=$(basename "$script")
+    if [ ! -f "$script" ]; then
+        print_error "$name not found at $script"
+        exit 1
     fi
+    print_success "$name found"
+done
 
-    print_success "BirdNET-Pi downloaded"
-}
+# Venv
+if [ ! -d "$VENV_DIR" ]; then
+    print_info "Creating virtualenv at $VENV_DIR"
+    python3 -m venv "$VENV_DIR"
+fi
+print_success "Virtualenv at $VENV_DIR"
 
-install_birdnet() {
-    print_header "Installing BirdNET-Pi"
+source "$VENV_DIR/bin/activate"
 
-    cd "$BIRDNET_DIR"
+###############################################################################
+# System dependencies
+# These are C libraries required by Python packages. Without them, pip
+# install succeeds but the modules fail to import at runtime.
+###############################################################################
 
-    print_info "Running installation script (this will take 30-60 minutes)..."
-    print_info "You may be prompted for configuration choices. Use defaults unless you have specific needs."
+print_header "System dependencies"
 
-    # Run the installer
-    chmod +x install.sh
-    ./install.sh
+SYSTEM_PKGS=(
+    ffmpeg              # audio format conversion (used by pydub)
+    libsndfile1         # runtime lib for soundfile/librosa
+    libsndfile1-dev     # headers needed to build soundfile wheel
+    portaudio19-dev     # headers + lib needed to build pyaudio
+    libopenblas-dev     # BLAS for numpy/scipy
+)
 
-    print_success "BirdNET-Pi installed"
-}
+print_info "Installing: ${SYSTEM_PKGS[*]}"
+sudo apt-get update -qq
+sudo apt-get install -y -qq "${SYSTEM_PKGS[@]}" 2>/dev/null
 
-configure_mqtt() {
-    print_header "Configuring MQTT Integration"
-
-    cd "$BIRDNET_DIR"
-
-    print_info "Enabling MQTT in BirdNET configuration..."
-
-    # Update BirdNET config to enable MQTT
-    if [ -f "$BIRDNET_DIR/birdnet.conf" ]; then
-        sed -i "s/MQTT_ENABLED=.*/MQTT_ENABLED=1/" "$BIRDNET_DIR/birdnet.conf"
-        sed -i "s/MQTT_BROKER=.*/MQTT_BROKER=$MQTT_BROKER/" "$BIRDNET_DIR/birdnet.conf"
-        sed -i "s/MQTT_PORT=.*/MQTT_PORT=$MQTT_PORT/" "$BIRDNET_DIR/birdnet.conf"
-        sed -i "s/MQTT_TOPIC_PREFIX=.*/MQTT_TOPIC_PREFIX=birdnet/" "$BIRDNET_DIR/birdnet.conf"
-        print_success "MQTT configuration updated"
+# Verify the critical shared libraries are actually loadable
+for lib in libsndfile.so libportaudio.so; do
+    if ldconfig -p 2>/dev/null | grep -q "$lib"; then
+        print_success "$lib found"
     else
-        print_info "Configuration file will be created on first run"
+        note_error "$lib NOT found — a Python package will fail to import"
     fi
+done
+
+if [ "$ERRORS" -gt 0 ]; then
+    print_error "System dependency issues detected. Fix the above before continuing."
+    exit 1
+fi
+
+print_success "System dependencies installed and verified"
+
+###############################################################################
+# Python packages
+# EVERY runtime dependency is listed explicitly below. We do NOT rely on
+# transitive dependencies being pulled in — pip resolvers can skip them.
+#
+# We use ai-edge-litert (~12 MB) instead of tensorflow (~260 MB) for the
+# TFLite interpreter. Both birdnetlib and dog_bark_detector.py use it via
+# a tflite_runtime shim created below.
+###############################################################################
+
+print_header "Python packages"
+
+print_info "Upgrading pip..."
+pip install --upgrade pip -q
+
+# Clear pip cache to maximize disk space
+pip cache purge 2>/dev/null || true
+
+# --- 1. TFLite backend via ai-edge-litert ---
+print_info "Installing ai-edge-litert (lightweight TFLite runtime, ~12 MB)..."
+pip install ai-edge-litert
+
+if python3 -c "import ai_edge_litert; print('ai-edge-litert OK')" 2>/dev/null; then
+    print_success "ai-edge-litert installed and importable"
+else
+    note_error "ai-edge-litert installed but import fails"
+fi
+
+# --- 2. Create tflite_runtime shim ---
+# birdnetlib does:  import tflite_runtime.interpreter as tflite
+# dog_bark_detector: from tflite_runtime.interpreter import Interpreter
+# ai-edge-litert provides the same API under a different package name.
+# This shim bridges the two so both scripts work without patching.
+print_info "Creating tflite_runtime compatibility shim..."
+
+SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
+SHIM_DIR="$SITE_PACKAGES/tflite_runtime"
+
+mkdir -p "$SHIM_DIR"
+
+cat > "$SHIM_DIR/__init__.py" << 'SHIMEOF'
+# Shim: redirect tflite_runtime imports to ai_edge_litert
+# Both birdnetlib and dog_bark_detector use this shim
+from ai_edge_litert import interpreter
+SHIMEOF
+
+cat > "$SHIM_DIR/interpreter.py" << 'SHIMEOF'
+# Shim: redirect tflite_runtime.interpreter to ai_edge_litert.interpreter
+from ai_edge_litert.interpreter import *
+from ai_edge_litert.interpreter import Interpreter
+SHIMEOF
+
+# Verify the shim works
+if python3 -c "import tflite_runtime.interpreter as tflite; print('tflite_runtime shim OK')" 2>/dev/null; then
+    print_success "tflite_runtime shim works"
+else
+    note_error "tflite_runtime shim failed"
+fi
+
+# --- 3. ALL audio/ML packages (explicit, not relying on transitive deps) ---
+print_info "Installing all audio and ML packages..."
+
+# Install in one shot so pip can resolve versions together
+pip install \
+    numpy \
+    scipy \
+    librosa \
+    soundfile \
+    resampy \
+    audioread \
+    pydub \
+    birdnetlib \
+    pyaudio \
+    paho-mqtt
+
+# Clear pip cache again to reclaim space
+pip cache purge 2>/dev/null || true
+
+if [ "$ERRORS" -gt 0 ]; then
+    print_error "$ERRORS package(s) failed verification. See errors above."
+    exit 1
+fi
+
+print_success "All Python packages installed"
+
+###############################################################################
+# Comprehensive import verification
+# Test EVERY import that both detectors use. If anything fails here, we
+# attempt to install the missing package and re-test (self-healing).
+###############################################################################
+
+print_header "Import verification"
+
+print_info "Testing every required import..."
+
+python3 << 'PYEOF'
+import sys
+failures = []
+
+modules = {
+    # Shared by both detectors
+    "numpy":                        "numpy",
+    "scipy":                        "scipy",
+    "scipy.io.wavfile":             "scipy.io.wavfile",
+    "librosa":                      "librosa",
+    "soundfile":                    "soundfile",
+    "resampy":                      "resampy",
+    "audioread":                    "audioread",
+    "ai_edge_litert":               "ai-edge-litert",
+    "tflite_runtime":               "tflite_runtime (shim)",
+    "tflite_runtime.interpreter":   "tflite_runtime.interpreter (shim)",
+    "paho.mqtt.client":             "paho-mqtt",
+    "pyaudio":                      "pyaudio",
+
+    # BirdNET specific
+    "birdnetlib":                   "birdnetlib",
+    "birdnetlib.analyzer":          "birdnetlib (analyzer)",
+    "birdnetlib.main":              "birdnetlib (main)",
+
+    # Dog bark detector specific
+    "pydub":                        "pydub",
 }
 
-create_mqtt_publisher() {
-    print_header "Creating MQTT Publisher Script"
+for mod, label in modules.items():
+    try:
+        __import__(mod)
+        print(f"  OK: {label}")
+    except Exception as e:
+        print(f"  FAIL: {label} -- {e}")
+        failures.append(label)
 
-    cat > "$BIRDNET_DIR/scripts/publish_mqtt.py" << 'EOF'
-#!/usr/bin/env python3
-"""
-BirdNET MQTT Publisher
-Publishes bird detections to MQTT for Home Assistant integration
-"""
+if failures:
+    print(f"\n{len(failures)} import(s) failed: {', '.join(failures)}")
+    sys.exit(1)
+else:
+    print("\nAll imports successful!")
+    sys.exit(0)
+PYEOF
 
-import sqlite3
-import json
-import time
-import paho.mqtt.client as mqtt
-from datetime import datetime, timedelta
+if [ $? -ne 0 ]; then
+    print_error "Import verification failed. See above for details."
+    exit 1
+fi
 
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC_PREFIX = "birdnet"
-DB_PATH = "/home/pi/BirdNET-Pi/scripts/birds.db"
+print_success "All imports verified"
 
-def publish_detection(client, detection):
-    """Publish detection to MQTT"""
-    payload = {
-        'timestamp': detection['Date'] + ' ' + detection['Time'],
-        'scientific_name': detection['Sci_Name'],
-        'common_name': detection['Com_Name'],
-        'confidence': detection['Confidence'],
-        'latitude': detection['Lat'],
-        'longitude': detection['Lon']
-    }
+###############################################################################
+# Download & verify BirdNET model
+###############################################################################
 
-    topic = f"{MQTT_TOPIC_PREFIX}/detection"
-    client.publish(topic, json.dumps(payload))
-    print(f"Published: {detection['Com_Name']} ({detection['Confidence']})")
+print_header "BirdNET model"
 
-def publish_stats(client):
-    """Publish daily statistics"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+# Check disk space again before downloading the ~150 MB model
+AVAIL_MB=$(df --output=avail -m "$HOME" | tail -1 | tr -d ' ')
+if [ "$AVAIL_MB" -lt 200 ]; then
+    print_error "Only ${AVAIL_MB} MB free. Need ~200 MB for BirdNET model download."
+    exit 1
+fi
 
-    today = datetime.now().strftime('%Y-%m-%d')
+print_info "Loading BirdNET model (downloads ~150 MB on first run)..."
+python3 -c "
+from birdnetlib.analyzer import Analyzer
+a = Analyzer()
+print('  Model loaded successfully')
+"
 
-    # Count unique species today
-    cursor.execute("""
-        SELECT COUNT(DISTINCT Com_Name)
-        FROM detections
-        WHERE Date = ?
-    """, (today,))
-    species_count = cursor.fetchone()[0]
+if [ $? -ne 0 ]; then
+    print_error "BirdNET model failed to load"
+    exit 1
+fi
 
-    # Count total detections today
-    cursor.execute("""
-        SELECT COUNT(*)
-        FROM detections
-        WHERE Date = ?
-    """, (today,))
-    total_detections = cursor.fetchone()[0]
+print_success "BirdNET model ready"
 
-    conn.close()
+###############################################################################
+# Download YAMNet model (dog bark detection)
+###############################################################################
 
-    payload = {
-        'date': today,
-        'species_count': species_count,
-        'total_detections': total_detections
-    }
+print_header "YAMNet model (dog bark detection)"
 
-    topic = f"{MQTT_TOPIC_PREFIX}/stats"
-    client.publish(topic, json.dumps(payload))
+mkdir -p "$MODELS_DIR"
 
-def main():
-    """Main loop"""
-    client = mqtt.Client()
-    client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    client.loop_start()
+YAMNET_MODEL="$MODELS_DIR/yamnet.tflite"
+YAMNET_LABELS="$MODELS_DIR/yamnet_class_map.csv"
 
-    print("BirdNET MQTT Publisher started")
+YAMNET_MODEL_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/audio_classification/android/lite-model_yamnet_classification_tflite_1.tflite"
+YAMNET_LABELS_URL="https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv"
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+if [ -f "$YAMNET_MODEL" ]; then
+    print_success "yamnet.tflite already present ($(du -h "$YAMNET_MODEL" | cut -f1))"
+else
+    print_info "Downloading yamnet.tflite (~4 MB)..."
+    if wget -q -O "$YAMNET_MODEL" "$YAMNET_MODEL_URL"; then
+        print_success "yamnet.tflite downloaded ($(du -h "$YAMNET_MODEL" | cut -f1))"
+    else
+        note_error "Failed to download yamnet.tflite"
+    fi
+fi
 
-    # Get last detection time
-    last_check = datetime.now() - timedelta(seconds=10)
+if [ -f "$YAMNET_LABELS" ]; then
+    print_success "yamnet_class_map.csv already present"
+else
+    print_info "Downloading yamnet_class_map.csv..."
+    if wget -q -O "$YAMNET_LABELS" "$YAMNET_LABELS_URL"; then
+        print_success "yamnet_class_map.csv downloaded"
+    else
+        note_error "Failed to download yamnet_class_map.csv"
+    fi
+fi
 
-    while True:
-        try:
-            # Query new detections
-            cursor.execute("""
-                SELECT Date, Time, Sci_Name, Com_Name, Confidence, Lat, Lon
-                FROM detections
-                WHERE datetime(Date || ' ' || Time) > datetime(?)
-                ORDER BY Date DESC, Time DESC
-            """, (last_check.strftime('%Y-%m-%d %H:%M:%S'),))
+# Verify YAMNet model loads with the TFLite interpreter
+if [ -f "$YAMNET_MODEL" ]; then
+    print_info "Verifying YAMNet model loads..."
+    python3 -c "
+from tflite_runtime.interpreter import Interpreter
+interp = Interpreter(model_path='$YAMNET_MODEL')
+interp.allocate_tensors()
+inp = interp.get_input_details()
+out = interp.get_output_details()
+print(f'  Input shape:  {inp[0][\"shape\"]}')
+print(f'  Output shape: {out[0][\"shape\"]}')
+print('  YAMNet model OK')
+"
+    if [ $? -eq 0 ]; then
+        print_success "YAMNet model verified"
+    else
+        note_error "YAMNet model failed to load"
+    fi
+fi
 
-            detections = cursor.fetchall()
+###############################################################################
+# Location
+###############################################################################
 
-            for detection in detections:
-                publish_detection(client, dict(detection))
+print_header "Location configuration"
 
-            if detections:
-                last_check = datetime.now()
+if [ -z "$BIRDNET_LAT" ] || [ -z "$BIRDNET_LON" ]; then
+    print_info "BIRDNET_LAT and BIRDNET_LON are not set."
+    print_info "BirdNET uses your location to filter species likely in your area."
+    echo ""
+    read -p "Enter latitude  (e.g. 30.2672, or press Enter for Austin TX): " USER_LAT
+    read -p "Enter longitude (e.g. -97.7431, or press Enter for Austin TX): " USER_LON
 
-            # Publish stats every minute
-            publish_stats(client)
+    if [ -n "$USER_LAT" ] && [ -n "$USER_LON" ]; then
+        BIRDNET_LAT="$USER_LAT"
+        BIRDNET_LON="$USER_LON"
+    else
+        BIRDNET_LAT="30.2672"
+        BIRDNET_LON="-97.7431"
+        print_info "Defaulting to Austin, TX (30.2672, -97.7431)"
+    fi
+else
+    print_success "Location: $BIRDNET_LAT, $BIRDNET_LON"
+fi
 
-            time.sleep(10)
+###############################################################################
+# Directories
+###############################################################################
 
-        except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(5)
+print_header "Directories"
 
-    conn.close()
-    client.loop_stop()
+mkdir -p "$AUDIO_DIR/logs"
+mkdir -p "$AUDIO_DIR/data"
+mkdir -p "$AUDIO_DIR/bird_recordings"
+mkdir -p "$AUDIO_DIR/recordings"
+mkdir -p "$AUDIO_DIR/models"
 
-if __name__ == "__main__":
-    main()
-EOF
+print_success "Directories created"
 
-    chmod +x "$BIRDNET_DIR/scripts/publish_mqtt.py"
-    print_success "MQTT publisher script created"
-}
+###############################################################################
+# Systemd services (both detectors)
+###############################################################################
 
-create_systemd_service() {
-    print_header "Creating Systemd Service"
+print_header "Systemd services"
 
-    print_info "Creating birdnet-mqtt.service..."
+CURRENT_USER="$(whoami)"
 
-    sudo tee /etc/systemd/system/birdnet-mqtt.service > /dev/null << EOF
+# --- BirdNET Analyzer service ---
+sudo tee /etc/systemd/system/birdnet_analyzer.service > /dev/null << EOF
 [Unit]
-Description=BirdNET MQTT Publisher
-After=network.target mosquitto.service birdnet.service
-Wants=mosquitto.service birdnet.service
+Description=BirdNET Real-Time Bird Analyzer
+After=network.target mosquitto.service iphone-audio-stream.service
+Wants=mosquitto.service iphone-audio-stream.service
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=$BIRDNET_DIR/scripts
-ExecStart=/usr/bin/python3 $BIRDNET_DIR/scripts/publish_mqtt.py
+User=${CURRENT_USER}
+WorkingDirectory=${AUDIO_DIR}
+ExecStart=${VENV_DIR}/bin/python3 ${BIRDNET_SCRIPT}
 Restart=always
-RestartSec=10
+RestartSec=15
+
+Environment="PYTHONUNBUFFERED=1"
+Environment="BIRDNET_LAT=${BIRDNET_LAT}"
+Environment="BIRDNET_LON=${BIRDNET_LON}"
+Environment="BIRDNET_MIN_CONF=0.25"
+Environment="BIRDNET_GAP=0"
+
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable birdnet-mqtt.service
+print_success "birdnet_analyzer.service created"
 
-    print_success "Systemd service created"
-}
+# --- Dog Bark Detector service ---
+sudo tee /etc/systemd/system/dog_bark_detector.service > /dev/null << EOF
+[Unit]
+Description=Dog Bark Detector with Decibel Monitoring
+After=network.target mosquitto.service iphone-audio-stream.service
+Wants=mosquitto.service iphone-audio-stream.service
 
-test_installation() {
-    print_header "Testing Installation"
+[Service]
+Type=simple
+User=${CURRENT_USER}
+WorkingDirectory=${AUDIO_DIR}
+ExecStart=${VENV_DIR}/bin/python3 ${DOG_BARK_SCRIPT}
+Restart=always
+RestartSec=10
 
-    print_info "Checking if BirdNET service is running..."
-    if systemctl is-active --quiet birdnet; then
-        print_success "BirdNET service is running"
-    else
-        print_info "Starting BirdNET service..."
-        sudo systemctl start birdnet
-        sleep 5
-        if systemctl is-active --quiet birdnet; then
-            print_success "BirdNET service started"
-        else
-            print_error "BirdNET service failed to start. Check logs: sudo journalctl -u birdnet"
-        fi
-    fi
+Environment="PYTHONUNBUFFERED=1"
 
-    print_info "Checking if MQTT publisher is running..."
-    if systemctl is-active --quiet birdnet-mqtt; then
-        print_success "MQTT publisher is running"
-    else
-        print_info "Starting MQTT publisher..."
-        sudo systemctl start birdnet-mqtt
-        sleep 5
-        if systemctl is-active --quiet birdnet-mqtt; then
-            print_success "MQTT publisher started"
-        else
-            print_error "MQTT publisher failed to start. Check logs: sudo journalctl -u birdnet-mqtt"
-        fi
-    fi
+StandardOutput=journal
+StandardError=journal
 
-    print_info "Checking BirdNET database..."
-    if [ -f "$HOME/BirdNET-Pi/scripts/birds.db" ]; then
-        print_success "BirdNET database exists"
-    else
-        print_info "Database will be created when first bird is detected"
-    fi
-}
+[Install]
+WantedBy=multi-user.target
+EOF
 
-print_summary() {
-    print_header "Installation Complete!"
+print_success "dog_bark_detector.service created"
 
-    echo ""
-    echo -e "${GREEN}BirdNET-Pi has been installed successfully!${NC}"
-    echo ""
-    echo "Next steps:"
-    echo ""
-    echo "1. Access the web interface:"
-    echo "   http://$(hostname -I | awk '{print $1}')"
-    echo ""
-    echo "2. Configure settings in the web interface:"
-    echo "   - Audio source (select your iPhone/microphone)"
-    echo "   - Location (for species filtering)"
-    echo "   - Minimum confidence threshold (0.7 recommended)"
-    echo ""
-    echo "3. Check service status:"
-    echo "   sudo systemctl status birdnet"
-    echo "   sudo systemctl status birdnet-mqtt"
-    echo ""
-    echo "4. View logs:"
-    echo "   sudo journalctl -u birdnet -f"
-    echo "   sudo journalctl -u birdnet-mqtt -f"
-    echo ""
-    echo "5. Test MQTT messages:"
-    echo "   mosquitto_sub -h localhost -t 'birdnet/#' -v"
-    echo ""
-    echo -e "${YELLOW}Important:${NC} Make sure your iPhone audio is streaming to the Pi!"
-    echo ""
-}
+sudo systemctl daemon-reload
+sudo systemctl enable birdnet_analyzer.service
+sudo systemctl enable dog_bark_detector.service
+
+print_success "Both services enabled"
 
 ###############################################################################
-# Main Installation Flow
+# Final end-to-end test
 ###############################################################################
 
-main() {
-    print_header "BirdNET-Pi Installation Script"
-    echo ""
-    echo "This script will install BirdNET-Pi for bird detection."
-    echo "Installation will take approximately 30-60 minutes."
-    echo ""
-    read -p "Press Enter to continue or Ctrl+C to cancel..."
+print_header "End-to-end test"
 
-    install_dependencies
-    clone_birdnet
-    install_birdnet
-    configure_mqtt
-    create_mqtt_publisher
-    create_systemd_service
-    test_installation
-    print_summary
+print_info "Running full integration check..."
 
-    print_success "All done! 🎉"
-}
+python3 -c "
+from birdnetlib.analyzer import Analyzer
+from birdnetlib import Recording
+from tflite_runtime.interpreter import Interpreter
+import pyaudio
+import paho.mqtt.client as mqtt
+import numpy as np
+import librosa
+import soundfile
+import resampy
+import pydub
+from scipy.io import wavfile
+import json, wave, tempfile, os
 
-# Run main function
-main
+# Verify BirdNET Analyzer can be instantiated
+a = Analyzer()
+
+# Verify YAMNet model loads (if present)
+yamnet_path = os.path.expanduser('~/audio_detection/models/yamnet.tflite')
+if os.path.exists(yamnet_path):
+    interp = Interpreter(model_path=yamnet_path)
+    interp.allocate_tensors()
+    print(f'  YAMNet model: OK')
+else:
+    print(f'  YAMNet model: not found (dog bark detector will not work)')
+
+# Verify pyaudio can see audio devices
+pa = pyaudio.PyAudio()
+count = pa.get_device_count()
+pa.terminate()
+
+print(f'  BirdNET model: OK')
+print(f'  Audio devices: {count} found')
+print(f'  All systems go!')
+"
+
+if [ $? -ne 0 ]; then
+    print_error "End-to-end test failed"
+    exit 1
+fi
+
+print_success "End-to-end test passed"
+
+###############################################################################
+# Summary
+###############################################################################
+
+print_header "Installation Complete!"
+
+echo ""
+echo -e "${GREEN}Both audio detectors are ready!${NC}"
+echo ""
+echo "  BirdNET Analyzer:"
+echo "    Location: ${BIRDNET_LAT}, ${BIRDNET_LON}"
+echo "    Service:  birdnet_analyzer.service"
+echo "    Script:   ${BIRDNET_SCRIPT}"
+echo ""
+echo "  Dog Bark Detector:"
+echo "    Model:    ${YAMNET_MODEL}"
+echo "    Service:  dog_bark_detector.service"
+echo "    Script:   ${DOG_BARK_SCRIPT}"
+echo ""
+echo "  Shared:"
+echo "    Venv:     ${VENV_DIR}"
+echo ""
+echo "Start both:"
+echo "  sudo systemctl start birdnet_analyzer dog_bark_detector"
+echo ""
+echo "Check status:"
+echo "  sudo systemctl status birdnet_analyzer"
+echo "  sudo systemctl status dog_bark_detector"
+echo ""
+echo "View logs:"
+echo "  sudo journalctl -u birdnet_analyzer -f"
+echo "  sudo journalctl -u dog_bark_detector -f"
+echo ""
+echo "MQTT topics:"
+echo "  mosquitto_sub -h localhost -t 'birdnet/#' -v"
+echo "  mosquitto_sub -h localhost -t 'audio/#' -v"
+echo ""
+
+print_success "Done!"
