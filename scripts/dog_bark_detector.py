@@ -782,40 +782,57 @@ class DogBarkDetector:
         })
 
     def _find_audio_device(self):
-        """Log available audio devices for diagnostics.
+        """Find the ALSA loopback capture device (hw:X,1) by name.
 
-        Uses PulseAudio default source (AUDIO_DEVICE_INDEX=None) so both
-        this detector and BirdNET can share the same loopback audio.
-        PulseAudio is the sole ALSA consumer of hw:X,1 and handles
-        fan-out to multiple readers.
+        Reads directly from the ALSA loopback capture subdevice rather than
+        relying on PipeWire/PulseAudio default source, which does not expose
+        the loopback after a reboot (module-alsa-source is unsupported by
+        PipeWire's PulseAudio compat layer). The loopback card name is stable
+        even when the card number changes between reboots. ALSA loopback
+        device 1 has 8 subdevices, so multiple readers (bark detector +
+        BirdNET) can connect simultaneously without conflict.
+
+        Returns the PyAudio device index to use, or None to fall back to default.
         """
         device_count = self.audio.get_device_count()
         input_devices = []
+        loopback_capture_idx = None
 
         for i in range(device_count):
             info = self.audio.get_device_info_by_index(i)
             if info.get('maxInputChannels', 0) > 0:
                 input_devices.append((i, info['name']))
+                name = info['name']
+                # Loopback capture side is hw:X,1 — device number ends in ,1)
+                if 'Loopback' in name and name.endswith(',1)'):
+                    loopback_capture_idx = i
 
         logger.info(f"Found {len(input_devices)} input device(s):")
         for idx, name in input_devices:
-            logger.info(f"  [{idx}] {name}")
-        logger.info("Using PulseAudio default source (shared with BirdNET)")
+            marker = " <-- selected" if idx == loopback_capture_idx else ""
+            logger.info(f"  [{idx}] {name}{marker}")
+
+        if loopback_capture_idx is not None:
+            name = self.audio.get_device_info_by_index(loopback_capture_idx)['name']
+            logger.info(f"Using ALSA loopback capture device [{loopback_capture_idx}] {name}")
+        else:
+            logger.warning("Loopback capture device not found — falling back to system default")
+            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
+            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
 
         if not input_devices:
             logger.warning("NO INPUT AUDIO DEVICES FOUND!")
-            logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
-            logger.warning("  - Start iPhone stream: sudo systemctl start iphone-audio-stream")
-            logger.warning("  - Start PulseAudio: pulseaudio --start")
             self.mqtt.publish_mic_status('no_device',
-                'No audio input devices found - check snd-aloop, PulseAudio, and iphone-audio-stream')
+                'No audio input devices found - check snd-aloop and iphone-audio-stream')
+
+        return loopback_capture_idx
 
     def start(self):
         """Start the detection system"""
         logger.info("Starting dog bark detection...")
 
         # Find loopback device
-        self._find_audio_device()
+        device_index = self._find_audio_device()
 
         # Open audio stream
         try:
@@ -824,7 +841,7 @@ class DogBarkDetector:
                 channels=CHANNELS,
                 rate=SAMPLE_RATE,
                 input=True,
-                input_device_index=AUDIO_DEVICE_INDEX,
+                input_device_index=device_index,
                 frames_per_buffer=CHUNK_SIZE
             )
             logger.info(f"Audio stream opened (sample rate: {SAMPLE_RATE} Hz)")
