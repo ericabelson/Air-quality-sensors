@@ -29,9 +29,10 @@ These things must **never** appear in any commit, branch, or push to this repo:
 | Personal network topology | Security |
 | Any credential, secret, or API key | Security |
 
-The `homeassistant/` folder **inside this repo** is intentionally limited to
-audio/sensor detection configs only (packages, dashboards, automations for
-the projects in `scripts/`). Do not expand its scope.
+The `homeassistant/` folder **inside this repo** can contain any HA configs
+that are part of this project (audio detection, air quality sensors, weather
+station, Z-Wave, BLE sensors, etc.). Just keep out anything Anker Solix
+related and anything containing credentials or private device data.
 
 ---
 
