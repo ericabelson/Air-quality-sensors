@@ -39,6 +39,7 @@ import json
 import wave
 import tempfile
 import logging
+import threading
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 import numpy as np
@@ -117,6 +118,12 @@ BIRD_DETECTIONS_CSV = os.path.join(DATA_DIR, "bird_detections.csv")
 # Silence / health thresholds (consistent with dog_bark_detector.py)
 SILENCE_THRESHOLD_DB = 32
 SILENCE_ALERT_SECONDS = 60
+
+# Watchdog — how long (seconds) stream.read() is allowed to block before we
+# consider the audio device frozen and force-reopen it.
+WATCHDOG_TIMEOUT_SEC = 45
+# How often the watchdog thread wakes to check (should be < WATCHDOG_TIMEOUT_SEC)
+WATCHDOG_POLL_SEC = 10
 
 # Create directories
 for _d in [LOG_DIR, DATA_DIR]:
@@ -384,6 +391,10 @@ class BirdNETAnalyzer:
         self.last_cleanup = datetime.now()
         self.consecutive_errors = 0
 
+        # Watchdog — signals when the main loop is trying to read audio
+        self._reading_audio = False
+        self._watchdog_abort = threading.Event()
+
         # CSV
         init_csv()
 
@@ -450,12 +461,66 @@ class BirdNETAnalyzer:
         self.mqtt.publish_monitor_active(True)
         self.monitor_active = True
 
+        # Start watchdog thread
+        watchdog = threading.Thread(
+            target=self._watchdog_loop, daemon=True, name="BirdNETWatchdog"
+        )
+        watchdog.start()
+
         try:
             self._detection_loop()
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt — shutting down")
         finally:
+            self._watchdog_abort.set()
             self.stop()
+
+    def _watchdog_loop(self):
+        """Daemon thread: kick the audio stream if it freezes silently.
+
+        stream.read() can block forever when the ALSA dsnoop device becomes
+        unresponsive (e.g. iPhone stream drops and reconnects).  This watchdog
+        monitors last_audio_time and forcefully closes+reopens the stream if
+        WATCHDOG_TIMEOUT_SEC elapses without a successful read.
+        """
+        logger.info(f"Watchdog started (timeout={WATCHDOG_TIMEOUT_SEC}s, "
+                    f"poll={WATCHDOG_POLL_SEC}s)")
+        while not self._watchdog_abort.is_set():
+            self._watchdog_abort.wait(timeout=WATCHDOG_POLL_SEC)
+            if self._watchdog_abort.is_set():
+                break
+            if not self._reading_audio:
+                # Not currently blocked in stream.read() — nothing to do
+                continue
+            elapsed = (datetime.now() - self.last_audio_time).total_seconds()
+            if elapsed >= WATCHDOG_TIMEOUT_SEC:
+                logger.error(
+                    f"[watchdog] stream.read() blocked for {elapsed:.0f}s — "
+                    f"forcing stream reopen"
+                )
+                self._reopen_stream()
+
+    def _reopen_stream(self):
+        """Close and reopen the PyAudio stream to recover from a frozen device.
+
+        Called from the watchdog thread while the main thread is blocked in
+        stream.read().  Closing the stream unblocks the read with an IOError,
+        which the _detection_loop except clause will catch and recover from.
+        """
+        try:
+            if self.stream:
+                try:
+                    self.stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    self.stream.close()
+                except Exception:
+                    pass
+                self.stream = None
+            logger.info("[watchdog] old stream closed — main loop will reopen")
+        except Exception as e:
+            logger.error(f"[watchdog] reopen error: {e}")
 
     def _detection_loop(self):
         """Main loop: record → analyze → publish."""
@@ -463,9 +528,26 @@ class BirdNETAnalyzer:
 
         while True:
             try:
-                # Record one chunk
+                # If watchdog closed a frozen stream, reopen it before reading
+                if self.stream is None:
+                    logger.info("Reopening audio stream after watchdog reset...")
+                    device_index = self._find_loopback_device()
+                    self.stream = self.audio.open(
+                        format=pyaudio.paInt16,
+                        channels=CHANNELS,
+                        rate=SAMPLE_RATE,
+                        input=True,
+                        input_device_index=device_index,
+                        frames_per_buffer=self.frames_per_chunk
+                    )
+                    logger.info("Audio stream reopened successfully")
+                    self.consecutive_errors = 0
+
+                # Record one chunk (set flag so watchdog knows we're in here)
+                self._reading_audio = True
                 audio_bytes = self.stream.read(self.frames_per_chunk,
                                                exception_on_overflow=False)
+                self._reading_audio = False
                 audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
 
                 self.last_audio_time = datetime.now()
@@ -552,6 +634,7 @@ class BirdNETAnalyzer:
                     time.sleep(ANALYSIS_GAP_SEC)
 
             except IOError as e:
+                self._reading_audio = False
                 self.consecutive_errors += 1
                 logger.warning(f"Audio read error #{self.consecutive_errors}: {e}")
                 if self.consecutive_errors > 10:
@@ -563,6 +646,7 @@ class BirdNETAnalyzer:
                 time.sleep(1)
 
             except Exception as e:
+                self._reading_audio = False
                 logger.error(f"Detection loop error: {e}")
                 time.sleep(2)
 

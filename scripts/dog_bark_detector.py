@@ -138,7 +138,8 @@ HEALTH_CHECK_INTERVAL = 30
 XRUN_AUTO_RESTART = True
 
 # Minimum seconds between auto-restarts (prevents restart loops).
-RESTART_COOLDOWN_SECONDS = 120
+# 30s is long enough to avoid restart storms but short enough to recover quickly.
+RESTART_COOLDOWN_SECONDS = 30
 
 # Seconds without any non-silent audio before health is flagged as degraded.
 # 300 s (5 min) avoids false alarms during genuine quiet periods.
