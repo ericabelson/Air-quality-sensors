@@ -67,6 +67,12 @@ except ImportError:
     print("  (This will also install BirdNET-Analyzer and download the model.)")
     sys.exit(1)
 
+# HTTP (for Wikipedia photo lookup — optional, gracefully degraded if missing)
+try:
+    import requests as _requests
+except ImportError:
+    _requests = None
+
 
 # ============================================================================
 # CONFIGURATION
@@ -101,6 +107,7 @@ MQTT_TOPIC_DETECTION = "birdnet/detection"
 MQTT_TOPIC_STATS = "birdnet/stats"
 MQTT_TOPIC_STATUS = "birdnet/status"
 MQTT_TOPIC_MONITOR_ACTIVE = "birdnet/monitor_active"
+MQTT_TOPIC_RECENT_BIRDS = "birdnet/recent_birds"  # Retained JSON for photo gallery
 
 # File Paths
 BASE_DIR = os.path.expanduser("~/audio_detection")
@@ -114,6 +121,16 @@ MAX_BIRD_RECORDING_MB = 500  # FIFO cap for bird recordings
 
 # CSV log of every detection
 BIRD_DETECTIONS_CSV = os.path.join(DATA_DIR, "bird_detections.csv")
+
+# Bird photo cache — persists Wikipedia thumbnail URLs across restarts
+BIRD_PHOTO_CACHE_FILE = os.path.join(DATA_DIR, "bird_photo_cache.json")
+
+# Recent birds list — how many unique species to track for the dashboard gallery
+RECENT_BIRDS_MAX = 10
+
+# Wikipedia REST API for species photo lookup (no API key required)
+_WIKIPEDIA_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
+_PHOTO_FETCH_TIMEOUT = 6  # seconds per request
 
 # Silence / health thresholds (consistent with dog_bark_detector.py)
 SILENCE_THRESHOLD_DB = 32
@@ -343,6 +360,139 @@ def cleanup_bird_recordings():
 
 
 # ============================================================================
+# BIRD PHOTO CACHE
+# ============================================================================
+
+class BirdPhotoCache:
+    """Fetches and caches Wikipedia thumbnail URLs for bird species.
+
+    Lookups happen in background threads so the detection loop is never
+    blocked by a network request.  Results are persisted to disk so the
+    cache survives service restarts.
+    """
+
+    def __init__(self):
+        self._cache = {}          # {scientific_name_lower: url_or_empty_string}
+        self._pending = set()     # species currently being fetched
+        self._lock = threading.Lock()
+        self._load()
+
+    def _load(self):
+        try:
+            if os.path.exists(BIRD_PHOTO_CACHE_FILE):
+                with open(BIRD_PHOTO_CACHE_FILE) as f:
+                    self._cache = json.load(f)
+                logger.info(f"Bird photo cache loaded ({len(self._cache)} species)")
+        except Exception as e:
+            logger.warning(f"Could not load bird photo cache: {e}")
+
+    def _save(self):
+        try:
+            with open(BIRD_PHOTO_CACHE_FILE, 'w') as f:
+                json.dump(self._cache, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Could not save bird photo cache: {e}")
+
+    def get_photo_url(self, common_name, scientific_name):
+        """Return a cached photo URL, or '' while a background fetch is in progress.
+
+        On the first detection of a new species the URL is '', but subsequent
+        detections (and the next MQTT publish) will include the real photo.
+        """
+        if _requests is None:
+            return ''
+        key = scientific_name.lower()
+        with self._lock:
+            if key in self._cache:
+                return self._cache[key]
+            if key not in self._pending:
+                self._pending.add(key)
+                threading.Thread(
+                    target=self._fetch_and_cache,
+                    args=(common_name, scientific_name, key),
+                    daemon=True,
+                    name=f"PhotoFetch-{common_name[:20]}"
+                ).start()
+        return ''
+
+    def _fetch_and_cache(self, common_name, scientific_name, key):
+        """Background thread: try scientific name first, then common name."""
+        url = (self._fetch_wikipedia(scientific_name) or
+               self._fetch_wikipedia(common_name) or '')
+        with self._lock:
+            self._cache[key] = url
+            self._pending.discard(key)
+        self._save()
+        if url:
+            logger.info(f"Photo cached for {common_name}: {url[:70]}")
+        else:
+            logger.debug(f"No Wikipedia photo found for {common_name}")
+
+    def _fetch_wikipedia(self, name):
+        """Fetch Wikipedia thumbnail URL for a species name."""
+        page = name.replace(' ', '_')
+        url = _WIKIPEDIA_URL.format(page)
+        try:
+            resp = _requests.get(
+                url, timeout=_PHOTO_FETCH_TIMEOUT,
+                headers={'User-Agent': 'BirdNET-HA-Dashboard/1.0 (home automation)'}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                thumb = data.get('thumbnail', {}).get('source', '')
+                if thumb:
+                    return thumb
+        except Exception as e:
+            logger.debug(f"Wikipedia fetch error for '{name}': {e}")
+        return None
+
+
+class RecentBirds:
+    """Ordered list of the most recently detected unique bird species.
+
+    When a species is detected again it moves to the top of the list (most
+    recent).  The list is capped at RECENT_BIRDS_MAX entries.  Each entry
+    carries the photo URL from BirdPhotoCache (may be '' on first detection,
+    then filled in on subsequent detections of the same species).
+    """
+
+    def __init__(self, photo_cache):
+        self._photo_cache = photo_cache
+        self._birds = []   # list of dicts, index 0 = most recently detected
+
+    def add(self, common_name, scientific_name, confidence, timestamp):
+        """Add or update a detection entry."""
+        url = self._photo_cache.get_photo_url(common_name, scientific_name)
+        entry = {
+            'common_name': common_name,
+            'scientific_name': scientific_name,
+            'confidence': round(float(confidence), 3),
+            'timestamp': timestamp.isoformat(),
+            'photo_url': url,
+        }
+        # Remove any existing entry for this species so it moves to top
+        self._birds = [b for b in self._birds if b['common_name'] != common_name]
+        self._birds.insert(0, entry)
+        self._birds = self._birds[:RECENT_BIRDS_MAX]
+
+    def refresh_photo(self, common_name, scientific_name):
+        """Re-fetch photo URL for a cached entry (called after background fetch)."""
+        url = self._photo_cache.get_photo_url(common_name, scientific_name)
+        if not url:
+            return
+        for b in self._birds:
+            if b['common_name'] == common_name and not b['photo_url']:
+                b['photo_url'] = url
+
+    def as_mqtt_payload(self):
+        return {
+            'count': len(self._birds),
+            'birds': self._birds,
+            'updated': datetime.now().isoformat(),
+        }
+
+
+# ============================================================================
 # MAIN ANALYZER
 # ============================================================================
 
@@ -394,6 +544,10 @@ class BirdNETAnalyzer:
         # Watchdog — signals when the main loop is trying to read audio
         self._reading_audio = False
         self._watchdog_abort = threading.Event()
+
+        # Bird photo cache + recent birds list (for dashboard gallery)
+        self.photo_cache = BirdPhotoCache()
+        self.recent_birds = RecentBirds(self.photo_cache)
 
         # CSV
         init_csv()
@@ -613,6 +767,15 @@ class BirdNETAnalyzer:
 
                     # Track stats
                     self.tracker.add_detection(common)
+
+                    # Update recent birds gallery and publish (retained)
+                    now_ts = datetime.now()
+                    self.recent_birds.add(common, scientific, confidence, now_ts)
+                    self.mqtt.publish(
+                        MQTT_TOPIC_RECENT_BIRDS,
+                        self.recent_birds.as_mqtt_payload(),
+                        retain=True
+                    )
 
                     # Log to CSV
                     log_detection_csv(common, scientific, confidence)

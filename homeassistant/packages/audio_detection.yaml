@@ -24,7 +24,6 @@ mqtt:
       unit_of_measurement: "dB"
       icon: mdi:volume-high
       device_class: sound_pressure
-      state_class: measurement
 
     # Dog Bark Confidence
     - name: "Dog Bark Confidence"
@@ -54,7 +53,6 @@ mqtt:
       state_topic: "audio/bark_stats"
       value_template: "{{ value_json.total_barks | int }}"
       icon: mdi:counter
-      state_class: total
 
     # Max Decibels Today
     - name: "Max Decibels Today"
@@ -63,7 +61,6 @@ mqtt:
       value_template: "{{ value_json.max_decibels | round(1) }}"
       unit_of_measurement: "dB"
       icon: mdi:volume-high
-      state_class: measurement
 
     # Last Detection (updated every minute)
     - name: "Last Bark Detection"
@@ -89,20 +86,6 @@ mqtt:
       value_template: "{{ value_json.status }}"
       icon: mdi:microphone
       json_attributes_topic: "audio/microphone_status"
-      json_attributes_template: "{{ value_json | tojson }}"
-
-    # Recording Storage Status (USB drive health)
-    - name: "Recording Storage Status"
-      unique_id: recording_storage_status
-      state_topic: "audio/storage_status"
-      value_template: "{{ value_json.status }}"
-      icon: >
-        {% if value_json.status == 'usb' %}
-          mdi:usb-flash-drive
-        {% else %}
-          mdi:alert-circle
-        {% endif %}
-      json_attributes_topic: "audio/storage_status"
       json_attributes_template: "{{ value_json | tojson }}"
 
     # ============================================================================
@@ -144,7 +127,6 @@ mqtt:
       state_topic: "birdnet/stats"
       value_template: "{{ value_json.total_detections | int }}"
       icon: mdi:counter
-      state_class: total
 
     # BirdNET Analyzer Status
     - name: "BirdNET Status"
@@ -152,6 +134,38 @@ mqtt:
       state_topic: "birdnet/status"
       value_template: "{{ value_json.status }}"
       icon: mdi:bird
+
+    # Recent Birds — 10 most recently detected unique species with photo URLs
+    # Published as a retained MQTT message; used by the dashboard photo gallery.
+    - name: "Recent Birds"
+      unique_id: recent_birds_data
+      state_topic: "birdnet/recent_birds"
+      value_template: "{{ value_json.count | int(0) }}"
+      unit_of_measurement: "species"
+      icon: mdi:bird
+      json_attributes_topic: "birdnet/recent_birds"
+      json_attributes_template: "{{ value_json | tojson }}"
+
+    # MQTT sensor — full pipeline health summary (state + JSON attributes)
+    - name: "Audio Pipeline Health"
+      unique_id: audio_pipeline_health
+      state_topic: "audio/health"
+      value_template: "{{ value_json.overall }}"
+      icon: mdi:pipe-leak
+      json_attributes_topic: "audio/health"
+      json_attributes_template: "{{ value_json | tojson }}"
+
+    # Barks per 5-minute window — published by the detector at the end of each
+    # 5-minute bucket.  state_class: measurement tells HA to store long-term
+    # statistics so the statistics-graph card can show 3 days of history at
+    # 5-minute resolution.
+    - name: "Bark 5-Min Count"
+      unique_id: bark_5min_count
+      state_topic: "audio/bark_5min_count"
+      value_template: "{{ value_json.count | int }}"
+      unit_of_measurement: "barks"
+      icon: mdi:dog
+      state_class: measurement
 
   binary_sensor:
     # Dog Barking Status (Binary)
@@ -186,16 +200,6 @@ mqtt:
       device_class: running
       icon: mdi:monitor-eye
 
-    # USB Recording Drive Connected
-    - name: "USB Recording Drive"
-      unique_id: usb_recording_drive
-      state_topic: "audio/storage_status"
-      value_template: "{{ value_json.usb_connected }}"
-      payload_on: true
-      payload_off: false
-      device_class: connectivity
-      icon: mdi:usb-flash-drive
-
     # BirdNET Monitor Active - distinguishes "no birds" from "analyzer not running"
     - name: "BirdNET Monitor Active"
       unique_id: birdnet_monitor_active
@@ -206,6 +210,49 @@ mqtt:
       device_class: running
       icon: mdi:bird
 
+    # -----------------------------------------------------------------------
+    # Pipeline Health — four independent component checks
+    # Each is False when that specific component has failed.
+    # -----------------------------------------------------------------------
+
+    # 1. Phone / mic source reachable (ICMP ping from the Pi)
+    - name: "Audio Source Reachable"
+      unique_id: audio_source_reachable
+      state_topic: "audio/health"
+      value_template: "{{ value_json.phone_reachable }}"
+      payload_on: true
+      payload_off: false
+      device_class: connectivity
+      icon: mdi:cellphone-wireless
+
+    # 2. Audio source systemd service running
+    - name: "Stream Service Running"
+      unique_id: stream_service_running
+      state_topic: "audio/health"
+      value_template: "{{ value_json.service_running }}"
+      payload_on: true
+      payload_off: false
+      device_class: running
+      icon: mdi:server-network
+
+    # 3. ALSA loopback playback healthy (not XRUN / not closed)
+    - name: "Audio Loopback Healthy"
+      unique_id: audio_loopback_healthy
+      state_topic: "audio/health"
+      value_template: "{{ value_json.alsa_healthy }}"
+      payload_on: true
+      payload_off: false
+      icon: mdi:audio-input-rca
+
+    # 4. Real non-silent audio flowing in the last 5 minutes
+    - name: "Real Audio Flowing"
+      unique_id: real_audio_flowing
+      state_topic: "audio/health"
+      value_template: "{{ value_json.audio_flowing }}"
+      payload_on: true
+      payload_off: false
+      icon: mdi:waveform
+
 # ============================================================================
 # TEMPLATE SENSORS
 # ============================================================================
@@ -215,7 +262,7 @@ template:
       # Bark Duration Calculator (minutes of barking per hour)
       # Uses actual barking time from history_stats (in hours) divided by elapsed hours
       - unique_id: bark_minutes_per_hour
-        name: "Bark Minutes Per Hour"
+        name: "Barking Minutes Per Hour"
         unit_of_measurement: "min/hr"
         icon: mdi:clock-outline
         state: >
@@ -246,10 +293,10 @@ template:
 
       # Decibel Status (Color Coded)
       - unique_id: decibel_status
-        name: "Decibel Status"
+        name: "Decibel Level Status"
         icon: mdi:volume-high
         state: >
-          {% set db = states('sensor.audio_decibels') | float %}
+          {% set db = states('sensor.audio_decibels') | float(0) %}
           {% if db < 50 %}
             Quiet
           {% elif db < 70 %}
@@ -262,7 +309,7 @@ template:
 
       # Bark Event Status (for dashboard display)
       - unique_id: bark_event_status
-        name: "Bark Event Status"
+        name: "Bark Status"
         icon: >
           {% if is_state('binary_sensor.dog_barking', 'on') %}
             mdi:dog
@@ -279,7 +326,7 @@ template:
       # Current Quiet Streak (time since last bark)
       # Shows "NOT MONITORING" when detector is offline to avoid conflating downtime with quiet
       - unique_id: quiet_streak
-        name: "Quiet Streak"
+        name: "Current Quiet Streak"
         icon: mdi:timer-outline
         state: >
           {% if is_state('binary_sensor.bark_monitor_active', 'off') %}
@@ -303,6 +350,45 @@ template:
               Unknown
             {% endif %}
           {% endif %}
+
+      # -----------------------------------------------------------------------
+      # Pipeline health — human-readable summary for the dashboard
+      # -----------------------------------------------------------------------
+
+      # One-line summary of what's broken (or "All systems OK")
+      - unique_id: pipeline_status_summary
+        name: "Pipeline Status"
+        icon: >
+          {% if is_state('sensor.audio_pipeline_health', 'ok') %}
+            mdi:check-circle-outline
+          {% else %}
+            mdi:alert-circle-outline
+          {% endif %}
+        state: >
+          {% set issues = state_attr('sensor.audio_pipeline_health', 'issues') %}
+          {% if issues is none %}
+            Unknown
+          {% elif issues | length == 0 %}
+            All systems OK
+          {% else %}
+            {{ issues | join(' | ') }}
+          {% endif %}
+
+      # ALSA loopback state (running / xrun / closed / error)
+      - unique_id: alsa_loopback_state
+        name: "ALSA Loopback State"
+        icon: mdi:audio-input-rca
+        state: >
+          {{ state_attr('sensor.audio_pipeline_health', 'alsa_state') | default('unknown') | title }}
+
+      # Minutes since real (non-silent) audio was last received
+      - unique_id: real_audio_age_minutes
+        name: "Real Audio Age"
+        unit_of_measurement: "min"
+        icon: mdi:timer-outline
+        state: >
+          {% set age = state_attr('sensor.audio_pipeline_health', 'real_audio_age_seconds') | int(0) %}
+          {{ (age // 60) }}
 
 # ============================================================================
 # HISTORY STATS - Track Total Barking Time
@@ -352,6 +438,23 @@ sensor:
     type: ratio
     start: '{{ now().replace(hour=0, minute=0, second=0) }}'
     end: '{{ now() }}'
+
+  # Previous day barking totals (for 3-day bar comparison)
+  - platform: history_stats
+    name: "Barking Time Yesterday"
+    entity_id: binary_sensor.dog_barking
+    state: 'on'
+    type: time
+    start: '{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=1) }}'
+    end: '{{ now().replace(hour=0, minute=0, second=0) }}'
+
+  - platform: history_stats
+    name: "Barking Time Two Days Ago"
+    entity_id: binary_sensor.dog_barking
+    state: 'on'
+    type: time
+    start: '{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=2) }}'
+    end: '{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=1) }}'
 
 # ============================================================================
 # COUNTERS
@@ -423,8 +526,19 @@ group:
       - sensor.quiet_streak
       - sensor.monitor_uptime_today
       - sensor.monitor_uptime_percentage_today
-      - sensor.recording_storage_status
-      - binary_sensor.usb_recording_drive
+
+  audio_pipeline_health:
+    name: Audio Pipeline Health
+    icon: mdi:pipe
+    entities:
+      - sensor.audio_pipeline_health
+      - sensor.pipeline_status
+      - binary_sensor.audio_source_reachable
+      - binary_sensor.stream_service_running
+      - binary_sensor.audio_loopback_healthy
+      - binary_sensor.real_audio_flowing
+      - sensor.alsa_loopback_state
+      - sensor.real_audio_age
 
   bird_detection_sensors:
     name: Bird Detection
@@ -473,7 +587,7 @@ homeassistant:
 
     # Status Sensors
     sensor.bark_event_status:
-      friendly_name: "Current Bark Status"
+      friendly_name: "Current Status"
 
     sensor.quiet_streak:
-      friendly_name: "Current Quiet Streak"
+      friendly_name: "Quiet Period"
