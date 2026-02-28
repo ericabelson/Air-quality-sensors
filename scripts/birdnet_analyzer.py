@@ -215,27 +215,29 @@ class MQTTPublisher:
         logger.warning("Disconnected from MQTT broker")
         self.connected = False
 
-    def publish(self, topic, payload):
+    def publish(self, topic, payload, retain=False):
         if not self.connected:
             return
         try:
             if isinstance(payload, dict):
                 payload = json.dumps(payload)
-            self.client.publish(topic, payload)
+            self.client.publish(topic, payload, retain=retain)
         except Exception as e:
             logger.error(f"MQTT publish error: {e}")
 
     def publish_status(self, status):
+        # Retain=True so HA gets the correct state after restart, not just the LWT "offline"
         self.publish(MQTT_TOPIC_STATUS, {
             'status': status,
             'timestamp': datetime.now().isoformat()
-        })
+        }, retain=True)
 
     def publish_monitor_active(self, active):
+        # Retain=True so HA knows monitor state even if it restarts between publishes
         self.publish(MQTT_TOPIC_MONITOR_ACTIVE, {
             'active': active,
             'timestamp': datetime.now().isoformat()
-        })
+        }, retain=True)
 
     def publish_detection(self, common_name, scientific_name, confidence):
         self.publish(MQTT_TOPIC_DETECTION, {
@@ -385,22 +387,50 @@ class BirdNETAnalyzer:
         # CSV
         init_csv()
 
-    def _log_audio_devices(self):
-        """Log available audio input devices for diagnostics."""
+    def _find_loopback_device(self):
+        """Find the shared loopback capture device.
+
+        Prefers the 'loopback_cap' dsnoop device defined in /etc/asound.conf,
+        which lets multiple readers (bark detector + BirdNET) share the same
+        ALSA loopback subdevice. Falls back to raw hw:Loopback,1 if dsnoop
+        is unavailable.
+        """
         count = self.audio.get_device_count()
         inputs = []
+        dsnoop_idx = None
+        loopback_idx = None
         for i in range(count):
             info = self.audio.get_device_info_by_index(i)
             if info.get('maxInputChannels', 0) > 0:
-                inputs.append((i, info['name']))
+                name = info['name']
+                inputs.append((i, name))
+                # Prefer the shared dsnoop device (defined in /etc/asound.conf)
+                if 'loopback_cap' in name.lower():
+                    dsnoop_idx = i
+                # Fallback: raw loopback capture (hw:X,1)
+                elif 'Loopback' in name and name.endswith(',1)'):
+                    loopback_idx = i
+
+        selected = dsnoop_idx if dsnoop_idx is not None else loopback_idx
+
         logger.info(f"Found {len(inputs)} input device(s):")
         for idx, name in inputs:
-            logger.info(f"  [{idx}] {name}")
-        logger.info("Using PulseAudio default source (shared with dog bark detector)")
+            marker = " <-- selected" if idx == selected else ""
+            logger.info(f"  [{idx}] {name}{marker}")
+        if dsnoop_idx is not None:
+            name = self.audio.get_device_info_by_index(dsnoop_idx)['name']
+            logger.info(f"Using shared loopback capture [{dsnoop_idx}] {name}")
+        elif loopback_idx is not None:
+            name = self.audio.get_device_info_by_index(loopback_idx)['name']
+            logger.info(f"Using raw ALSA loopback capture [{loopback_idx}] {name} (dsnoop not found)")
+        else:
+            logger.warning("Loopback capture device not found — falling back to system default")
+            logger.warning("  Check: sudo modprobe snd-aloop && systemctl status iphone-audio-stream")
+        return selected
 
     def start(self):
         """Open audio and enter detection loop."""
-        self._log_audio_devices()
+        device_index = self._find_loopback_device()
 
         try:
             self.stream = self.audio.open(
@@ -408,7 +438,7 @@ class BirdNETAnalyzer:
                 channels=CHANNELS,
                 rate=SAMPLE_RATE,
                 input=True,
-                input_device_index=AUDIO_DEVICE_INDEX,
+                input_device_index=device_index,
                 frames_per_buffer=self.frames_per_chunk
             )
             logger.info(f"Audio stream opened ({SAMPLE_RATE} Hz, {CHUNK_DURATION_SEC}s chunks)")

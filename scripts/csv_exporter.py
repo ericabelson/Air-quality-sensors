@@ -451,8 +451,8 @@ def main():
 
     parser = argparse.ArgumentParser(description='Export dog bark and bird detection data to CSV')
     parser.add_argument('--all', action='store_true', help='Export all CSV files')
-    parser.add_argument('--5min', action='store_true', help='Export 5-minute bark events')
-    parser.add_argument('--10min', action='store_true', help='Export 10-minute bark events')
+    parser.add_argument('--5min', dest='five_min', action='store_true', help='Export 5-minute bark events')
+    parser.add_argument('--10min', dest='ten_min', action='store_true', help='Export 10-minute bark events')
     parser.add_argument('--birds', action='store_true', help='Export bird detections')
     parser.add_argument('--daily', action='store_true', help='Generate daily summary')
     parser.add_argument('--weekly', action='store_true', help='Generate weekly report')

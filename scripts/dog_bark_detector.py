@@ -21,6 +21,7 @@ License: MIT
 
 import sys
 import os
+import subprocess
 import time
 import json
 import logging
@@ -66,9 +67,14 @@ CHANNELS = 1  # Mono
 CHUNK_SIZE = 15600  # YAMNet TFLite model expects exactly 15600 samples per inference
 
 # Detection Settings
-DOG_BARK_CONFIDENCE_THRESHOLD = 0.40  # Balanced for iPhone audio quality (8kHz G.711)
+# Lower threshold improves counting when multiple dogs bark simultaneously —
+# YAMNet's per-class confidence drops in complex multi-dog audio, so 0.40
+# misses many real barks.  0.30 catches them with acceptable false-positive rate
+# given the dB gate below.
+DOG_BARK_CONFIDENCE_THRESHOLD = 0.30
 BARK_COOLDOWN_SECONDS = 30  # Publish "not barking" after this many seconds of no bark
-MIN_CLASSIFY_DB = 35  # Don't classify audio below this dB (silence/near-silence)
+# Classify anything above the silence floor so we don't miss quieter barks.
+MIN_CLASSIFY_DB = 32  # Match SILENCE_THRESHOLD_DB; everything above silence gets classified
 DOG_BARK_CLASS_NAMES = [
     "Dog",
     "Bark",
@@ -108,6 +114,35 @@ MQTT_TOPIC_LAST_DETECTION = "audio/last_detection"
 MQTT_TOPIC_MIC_STATUS = "audio/microphone_status"
 MQTT_TOPIC_MONITOR_ACTIVE = "audio/monitor_active"  # Whether detector is actively monitoring
 MQTT_TOPIC_STORAGE_STATUS = "audio/storage_status"  # USB drive / recording storage health
+MQTT_TOPIC_HEALTH = "audio/health"                  # Full pipeline health (retained JSON)
+MQTT_TOPIC_BARK_5MIN = "audio/bark_5min_count"      # Barks-per-5-min bucket for HA chart
+
+# Seconds per bark-count bucket (must match HA statistics period)
+BARK_BUCKET_SECONDS = 300  # 5 minutes
+
+# ============================================================================
+# HEALTH MONITOR SETTINGS
+# ============================================================================
+
+# IP address of the audio source device (iPhone / future mic) to ping.
+# Update this if the device IP changes.
+AUDIO_SOURCE_IP = "192.168.68.106"
+
+# systemd service that streams audio into the ALSA loopback.
+AUDIO_SOURCE_SERVICE = "iphone-audio-stream"
+
+# How often (seconds) the health monitor runs its checks.
+HEALTH_CHECK_INTERVAL = 30
+
+# Auto-restart AUDIO_SOURCE_SERVICE when ALSA XRUN is detected.
+XRUN_AUTO_RESTART = True
+
+# Minimum seconds between auto-restarts (prevents restart loops).
+RESTART_COOLDOWN_SECONDS = 120
+
+# Seconds without any non-silent audio before health is flagged as degraded.
+# 300 s (5 min) avoids false alarms during genuine quiet periods.
+REAL_AUDIO_TIMEOUT = 300
 
 # File Paths
 BASE_DIR = os.path.expanduser("~/audio_detection")
@@ -596,6 +631,8 @@ class MQTTPublisher:
         MQTT_TOPIC_MIC_STATUS,
         MQTT_TOPIC_MONITOR_ACTIVE,
         MQTT_TOPIC_STORAGE_STATUS,
+        MQTT_TOPIC_HEALTH,
+        MQTT_TOPIC_BARK_5MIN,
     }
 
     def publish(self, topic, payload):
@@ -665,6 +702,10 @@ class MQTTPublisher:
         }
         self.publish(MQTT_TOPIC_MIC_STATUS, payload)
 
+    def publish_health(self, health_payload):
+        """Publish full pipeline health status (retained)."""
+        self.publish(MQTT_TOPIC_HEALTH, health_payload)
+
     def publish_storage_status(self, usb_connected, recording_dir, details=None):
         """Publish recording storage status"""
         payload = {
@@ -675,6 +716,210 @@ class MQTTPublisher:
             'details': details or ''
         }
         self.publish(MQTT_TOPIC_STORAGE_STATUS, payload)
+
+# ============================================================================
+# PIPELINE HEALTH MONITOR
+# ============================================================================
+
+class HealthMonitor:
+    """
+    Independent pipeline health checker running in a daemon thread.
+
+    Every HEALTH_CHECK_INTERVAL seconds it verifies:
+      1. Phone / mic source reachable (ICMP ping to AUDIO_SOURCE_IP)
+      2. Audio source systemd service is 'active'
+      3. ALSA loopback playback side is RUNNING (not XRUN / closed)
+      4. Real non-silent audio has been received recently
+
+    Findings are published as a single retained JSON to MQTT_TOPIC_HEALTH so
+    the HA dashboard can show exactly which component broke.
+
+    Auto-recovery: on XRUN the service is restarted (with cooldown).
+    monitor_active is forced False whenever any component is unhealthy.
+    """
+
+    def __init__(self, detector, mqtt_publisher):
+        self.detector = detector
+        self.mqtt = mqtt_publisher
+        self.last_restart_time = None
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="HealthMonitor"
+        )
+
+    def start(self):
+        self._thread.start()
+        logger.info("HealthMonitor thread started")
+
+    # ------------------------------------------------------------------
+    # Individual checks
+    # ------------------------------------------------------------------
+
+    def _check_phone_reachable(self):
+        """Ping AUDIO_SOURCE_IP once; return True if host replies."""
+        try:
+            result = subprocess.run(
+                ["ping", "-c", "1", "-W", "2", AUDIO_SOURCE_IP],
+                capture_output=True,
+                timeout=6,
+            )
+            return result.returncode == 0
+        except Exception as e:
+            logger.debug(f"[health] ping check error: {e}")
+            return False
+
+    def _check_service_active(self):
+        """Return True if AUDIO_SOURCE_SERVICE is 'active' per systemctl."""
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-active", AUDIO_SOURCE_SERVICE],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.stdout.strip() == "active"
+        except Exception as e:
+            logger.debug(f"[health] service check error: {e}")
+            return False
+
+    def _check_alsa_loopback(self):
+        """
+        Inspect /proc/asound/Loopback/pcm0p/subN/status for all subdevices.
+        Returns (state_str, detail_str) where state_str is one of:
+          'running' | 'xrun' | 'closed' | 'error'
+        """
+        xrun_found = False
+        running_found = False
+        for sub in range(8):
+            path = f"/proc/asound/Loopback/pcm0p/sub{sub}/status"
+            try:
+                with open(path) as f:
+                    content = f.read()
+                if "state: XRUN" in content:
+                    xrun_found = True
+                elif "state: RUNNING" in content:
+                    running_found = True
+            except FileNotFoundError:
+                break
+            except Exception:
+                pass
+        if xrun_found:
+            return "xrun", "Loopback playback in XRUN — audio frozen (will auto-restart)"
+        if running_found:
+            return "running", "Loopback healthy"
+        return "closed", "Loopback playback not open — ffmpeg may not be writing"
+
+    def _try_restart_service(self):
+        """Restart AUDIO_SOURCE_SERVICE with cooldown protection."""
+        now = datetime.now()
+        if self.last_restart_time:
+            age = (now - self.last_restart_time).total_seconds()
+            if age < RESTART_COOLDOWN_SECONDS:
+                logger.warning(
+                    f"[health] auto-restart skipped: cooldown active "
+                    f"({age:.0f}s < {RESTART_COOLDOWN_SECONDS}s)"
+                )
+                return False
+        try:
+            result = subprocess.run(
+                ["sudo", "systemctl", "restart", AUDIO_SOURCE_SERVICE],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                self.last_restart_time = now
+                logger.info(
+                    f"[health] auto-restarted {AUDIO_SOURCE_SERVICE} (XRUN recovery)"
+                )
+                return True
+            else:
+                logger.error(
+                    f"[health] auto-restart failed: {result.stderr.strip()}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[health] auto-restart exception: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------------
+
+    def _run(self):
+        # Let startup settle before the first check
+        time.sleep(HEALTH_CHECK_INTERVAL)
+        while True:
+            try:
+                self._do_check()
+            except Exception as e:
+                logger.error(f"[health] check error: {e}")
+            time.sleep(HEALTH_CHECK_INTERVAL)
+
+    def _do_check(self):
+        phone_ok = self._check_phone_reachable()
+        service_ok = self._check_service_active()
+        alsa_state, alsa_detail = self._check_alsa_loopback()
+        alsa_ok = alsa_state == "running"
+
+        real_audio_age = (
+            datetime.now() - self.detector.last_real_audio_time
+        ).total_seconds()
+        audio_ok = real_audio_age < REAL_AUDIO_TIMEOUT
+
+        issues = []
+        if not phone_ok:
+            issues.append(
+                f"{AUDIO_SOURCE_IP} unreachable (phone/mic offline or wrong IP?)"
+            )
+        if not service_ok:
+            issues.append(f"{AUDIO_SOURCE_SERVICE} service not running")
+        if not alsa_ok:
+            issues.append(alsa_detail)
+        if not audio_ok:
+            mins = int(real_audio_age // 60)
+            issues.append(f"No real audio for {mins}m — silent or source muted")
+
+        pipeline_ok = phone_ok and service_ok and alsa_ok and audio_ok
+        overall = "ok" if pipeline_ok else "degraded"
+
+        payload = {
+            "overall": overall,
+            "phone_reachable": phone_ok,
+            "service_running": service_ok,
+            "alsa_state": alsa_state,
+            "alsa_healthy": alsa_ok,
+            "audio_flowing": audio_ok,
+            "real_audio_age_seconds": int(real_audio_age),
+            "issues": issues,
+            "source_ip": AUDIO_SOURCE_IP,
+            "source_service": AUDIO_SOURCE_SERVICE,
+            "timestamp": datetime.now().isoformat(),
+        }
+        self.mqtt.publish_health(payload)
+
+        if overall == "ok":
+            logger.info(
+                f"[health] OK — phone:{phone_ok} svc:{service_ok} "
+                f"alsa:{alsa_state} audio:{audio_ok} "
+                f"(real audio {int(real_audio_age)}s ago)"
+            )
+        else:
+            logger.warning(f"[health] DEGRADED: {'; '.join(issues)}")
+
+        # Force monitor_active=False if the pipeline is unhealthy
+        if not pipeline_ok and self.detector.monitor_active:
+            self.detector._publish_monitor_active(False)
+            self.detector._log_uptime_event(
+                "health_degraded", "; ".join(issues)
+            )
+
+        # Auto-recovery: restart the service on XRUN or closed loopback
+        if alsa_state in ("xrun", "closed") and XRUN_AUTO_RESTART:
+            logger.warning(
+                f"[health] ALSA {alsa_state} detected — auto-restarting audio service"
+            )
+            self._try_restart_service()
+
 
 # ============================================================================
 # MAIN DETECTOR
@@ -704,10 +949,12 @@ class DogBarkDetector:
 
         # Microphone health monitoring
         self.last_audio_received = datetime.now()
+        self.last_real_audio_time = datetime.now()  # Updated only on non-silent audio
         self.last_mqtt_update = datetime.now()
         self.consecutive_read_errors = 0
         self.mic_status = 'starting'
         self.monitor_active = False  # Published to MQTT so HA knows we're running
+        self.health_monitor = None   # Set in start() after audio stream opens
 
         # Initialize raw event CSV (individual bark log)
         self._init_raw_event_csv()
@@ -719,15 +966,12 @@ class DogBarkDetector:
         self.last_silence_check = datetime.now()
         self.silence_alerted = False
 
-        # Statistics
-        self.daily_stats = {
-            'date': datetime.now().strftime('%Y-%m-%d'),
-            'total_barks': 0,
-            'total_duration_min': 0,
-            'max_decibels': 0,
-            'start_time': None,
-            'end_time': None
-        }
+        # Statistics — loaded from disk so totals survive detector restarts
+        self.daily_stats = self._load_daily_stats()
+
+        # 5-minute bark-count bucket for the HA histogram chart
+        self.bark_bucket_count = 0
+        self.bark_bucket_start = datetime.now()
 
         # Audio stream
         self.audio = pyaudio.PyAudio()
@@ -742,6 +986,52 @@ class DogBarkDetector:
         self.recorder.check_usb_status(force=True)
 
         logger.info("Initialization complete!")
+
+    # ------------------------------------------------------------------
+    # Daily stats persistence — survives detector restarts mid-day
+    # ------------------------------------------------------------------
+
+    _STATS_CACHE = os.path.join(
+        os.path.expanduser("~/audio_detection"), "data", "daily_stats_cache.json"
+    )
+
+    def _load_daily_stats(self):
+        """Load today's stats from disk, or start fresh if date has changed."""
+        today = datetime.now().strftime('%Y-%m-%d')
+        try:
+            with open(self._STATS_CACHE) as f:
+                cached = json.load(f)
+            if cached.get('date') == today:
+                logger.info(
+                    f"Resumed daily stats from cache: "
+                    f"{cached.get('total_barks', 0)} barks so far today"
+                )
+                return cached
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
+        # Fresh day or no cache
+        return {
+            'date': today,
+            'total_barks': 0,
+            'max_decibels': 0,
+            'start_time': None,
+            'end_time': None,
+        }
+
+    def _save_daily_stats(self):
+        """Persist today's stats to disk (called after every bark detection)."""
+        try:
+            # Convert numpy types to native Python for JSON serialization
+            serializable = {
+                k: (float(v) if hasattr(v, 'item') else v)
+                for k, v in self.daily_stats.items()
+            }
+            with open(self._STATS_CACHE, 'w') as f:
+                json.dump(serializable, f)
+        except Exception as e:
+            logger.error(f"Error saving daily stats cache: {e}")
+
+    # ------------------------------------------------------------------
 
     def _init_raw_event_csv(self):
         """Initialize raw bark event CSV with header if it doesn't exist"""
@@ -782,20 +1072,18 @@ class DogBarkDetector:
         })
 
     def _find_audio_device(self):
-        """Find the ALSA loopback capture device (hw:X,1) by name.
+        """Find the shared loopback capture device.
 
-        Reads directly from the ALSA loopback capture subdevice rather than
-        relying on PipeWire/PulseAudio default source, which does not expose
-        the loopback after a reboot (module-alsa-source is unsupported by
-        PipeWire's PulseAudio compat layer). The loopback card name is stable
-        even when the card number changes between reboots. ALSA loopback
-        device 1 has 8 subdevices, so multiple readers (bark detector +
-        BirdNET) can connect simultaneously without conflict.
+        Prefers the 'loopback_cap' dsnoop device defined in /etc/asound.conf,
+        which lets multiple readers (bark detector + BirdNET) share the same
+        ALSA loopback subdevice. Falls back to raw hw:Loopback,1 if dsnoop
+        is unavailable.
 
         Returns the PyAudio device index to use, or None to fall back to default.
         """
         device_count = self.audio.get_device_count()
         input_devices = []
+        dsnoop_idx = None
         loopback_capture_idx = None
 
         for i in range(device_count):
@@ -803,18 +1091,26 @@ class DogBarkDetector:
             if info.get('maxInputChannels', 0) > 0:
                 input_devices.append((i, info['name']))
                 name = info['name']
-                # Loopback capture side is hw:X,1 — device number ends in ,1)
-                if 'Loopback' in name and name.endswith(',1)'):
+                # Prefer the shared dsnoop device (defined in /etc/asound.conf)
+                if 'loopback_cap' in name.lower():
+                    dsnoop_idx = i
+                # Fallback: raw loopback capture (hw:X,1)
+                elif 'Loopback' in name and name.endswith(',1)'):
                     loopback_capture_idx = i
+
+        selected = dsnoop_idx if dsnoop_idx is not None else loopback_capture_idx
 
         logger.info(f"Found {len(input_devices)} input device(s):")
         for idx, name in input_devices:
-            marker = " <-- selected" if idx == loopback_capture_idx else ""
+            marker = " <-- selected" if idx == selected else ""
             logger.info(f"  [{idx}] {name}{marker}")
 
-        if loopback_capture_idx is not None:
+        if dsnoop_idx is not None:
+            name = self.audio.get_device_info_by_index(dsnoop_idx)['name']
+            logger.info(f"Using shared loopback capture [{dsnoop_idx}] {name}")
+        elif loopback_capture_idx is not None:
             name = self.audio.get_device_info_by_index(loopback_capture_idx)['name']
-            logger.info(f"Using ALSA loopback capture device [{loopback_capture_idx}] {name}")
+            logger.info(f"Using raw ALSA loopback capture [{loopback_capture_idx}] {name} (dsnoop not found)")
         else:
             logger.warning("Loopback capture device not found — falling back to system default")
             logger.warning("  - Load ALSA loopback: sudo modprobe snd-aloop")
@@ -825,7 +1121,7 @@ class DogBarkDetector:
             self.mqtt.publish_mic_status('no_device',
                 'No audio input devices found - check snd-aloop and iphone-audio-stream')
 
-        return loopback_capture_idx
+        return selected
 
     def start(self):
         """Start the detection system"""
@@ -857,6 +1153,10 @@ class DogBarkDetector:
         # Mark monitor as actively recording
         self._publish_monitor_active(True)
 
+        # Start the independent pipeline health monitor thread
+        self.health_monitor = HealthMonitor(self, self.mqtt)
+        self.health_monitor.start()
+
         # Start detection loop
         try:
             self._detection_loop()
@@ -879,8 +1179,11 @@ class DogBarkDetector:
                 self.last_audio_received = datetime.now()
                 self.consecutive_read_errors = 0
 
-                # Update mic status if it was offline
-                if self.mic_status != 'online':
+                # Update mic status if it was offline due to a stream error.
+                # Exclude 'silence' here — silence means the stream is open but
+                # audio content is silent (ALSA XRUN, RTSP source quiet, etc.).
+                # Recovering from silence is handled below in the else branch.
+                if self.mic_status not in ('online', 'silence'):
                     self.mic_status = 'online'
                     self.mqtt.publish_mic_status('online', 'Audio stream restored')
                     if not self.monitor_active:
@@ -937,10 +1240,17 @@ class DogBarkDetector:
                             )
                 else:
                     # Real audio detected - reset silence tracking
+                    self.last_real_audio_time = datetime.now()
                     if self.silence_alerted:
                         logger.info(f"Audio restored - silence ended after "
                                     f"{int((datetime.now() - self.silence_start_time).total_seconds())}s")
                         self.mqtt.publish_mic_status('online', 'Real audio detected - silence ended')
+                    # Recover monitor_active if we were in silence state
+                    if self.mic_status == 'silence':
+                        self.mic_status = 'online'
+                        if not self.monitor_active:
+                            self._publish_monitor_active(True)
+                            self._log_uptime_event('resume', 'Real audio detected after silence')
                     self.silence_start_time = None
                     self.silence_alerted = False
 
@@ -963,6 +1273,21 @@ class DogBarkDetector:
                         self.last_bark_decibels
                     )
                     self.last_mqtt_update = datetime.now()
+
+                # Publish 5-minute bark-count bucket and reset
+                bucket_age = (datetime.now() - self.bark_bucket_start).total_seconds()
+                if bucket_age >= BARK_BUCKET_SECONDS:
+                    self.mqtt.publish(
+                        MQTT_TOPIC_BARK_5MIN,
+                        {'count': self.bark_bucket_count,
+                         'window_start': self.bark_bucket_start.isoformat()}
+                    )
+                    logger.info(
+                        f"5-min bucket: {self.bark_bucket_count} barks "
+                        f"(window started {self.bark_bucket_start.strftime('%H:%M')})"
+                    )
+                    self.bark_bucket_count = 0
+                    self.bark_bucket_start = datetime.now()
 
                 # Periodically check USB drive status and switch recording dir if needed
                 self.recorder.check_usb_status()
@@ -1067,22 +1392,27 @@ class DogBarkDetector:
             self.daily_stats = {
                 'date': today,
                 'total_barks': 0,
-                'total_duration_min': 0,
                 'max_decibels': 0,
                 'start_time': None,
-                'end_time': None
+                'end_time': None,
             }
+            # Also reset bucket at midnight
+            self.bark_bucket_count = 0
+            self.bark_bucket_start = datetime.now()
 
         # Update stats
         self.daily_stats['total_barks'] += 1
         self.daily_stats['max_decibels'] = max(self.daily_stats['max_decibels'], event.decibels)
         self.daily_stats['end_time'] = event.timestamp.isoformat()
-
         if not self.daily_stats['start_time']:
             self.daily_stats['start_time'] = event.timestamp.isoformat()
 
-        # Publish updated stats
+        # Count into the current 5-min bucket
+        self.bark_bucket_count += 1
+
+        # Publish updated stats and persist to disk
         self.mqtt.publish_stats(self.daily_stats)
+        self._save_daily_stats()
 
     def _handle_event_grouping(self, event):
         """Handle event grouping for 5-min and 10-min gaps"""
