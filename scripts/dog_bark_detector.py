@@ -172,7 +172,9 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # Storage Management
-MAX_RECORDING_MB = 2000  # Maximum MB for audio recordings (FIFO: oldest deleted first)
+MAX_RECORDING_MB = 50000  # Maximum MB for audio recordings (FIFO: oldest deleted first)
+                          # 50 GB on a 477 GB USB drive; at 32 kbps MP3 this holds
+                          # ~3500 hours of bark-event audio for long-term legal evidence.
 AUDIO_QUALITY = "32k"  # Very low quality MP3 for minimal size
 
 # Raw Event Log - every individual bark detection with timestamp
@@ -1053,16 +1055,38 @@ class DogBarkDetector:
             logger.error(f"Error writing raw event CSV: {e}")
 
     def _log_uptime_event(self, event_type, details=''):
-        """Log monitor start/stop/gap events to uptime CSV"""
+        """Log monitor start/stop/gap events to uptime CSV AND to the main bark CSV.
+
+        Writing monitoring status rows into bark_events_raw.csv is critical for
+        legal data quality: a gap in bark records can only mean "no barking" if
+        the monitor was confirmed active during that period.  Status rows here
+        provide that proof — absence of BARK rows between two MONITOR_ONLINE rows
+        is affirmative evidence of silence, not a data gap.
+        """
+        now = datetime.now()
         try:
             if not os.path.exists(UPTIME_LOG_CSV):
                 with open(UPTIME_LOG_CSV, 'w') as f:
                     f.write("timestamp,event,details\n")
             with open(UPTIME_LOG_CSV, 'a') as f:
-                f.write(f"{datetime.now().isoformat()},{event_type},{details}\n")
+                f.write(f"{now.isoformat()},{event_type},{details}\n")
             logger.info(f"Uptime event logged: {event_type} {details}")
         except Exception as e:
             logger.error(f"Error writing uptime log: {e}")
+
+        # Mirror every monitoring-status change into bark_events_raw.csv so that
+        # file is a self-contained legal record.  Rows use class = MONITOR_<TYPE>
+        # and confidence/decibels = 0 to distinguish them from actual detections.
+        try:
+            class_name = f"MONITOR_{event_type.upper()}"
+            detail_safe = (details or '').replace(',', ';')  # avoid breaking CSV
+            with open(RAW_EVENTS_CSV, 'a') as f:
+                f.write(
+                    f"{now.isoformat()},{now.strftime('%Y-%m-%d')},{now.strftime('%H:%M:%S')},"
+                    f"1.000,0.0,{class_name},{detail_safe}\n"
+                )
+        except Exception as e:
+            logger.error(f"Error mirroring uptime event to raw CSV: {e}")
 
     def _publish_monitor_active(self, active):
         """Publish whether the monitor is actively recording"""

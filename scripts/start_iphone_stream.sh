@@ -17,7 +17,8 @@
 # License: MIT
 ###############################################################################
 
-set -e
+# Note: no set -e here — ffmpeg exits non-zero on RTSP disconnect, which is
+# expected. We want systemd Restart=always to handle reconnection cleanly.
 
 # Read the loopback card number written at boot by audio_startup.sh
 CARD_FILE="/run/audio_loopback_card"
@@ -46,29 +47,33 @@ fi
 
 RTSP_PORT="${RTSP_PORT:-8554}"
 RTSP_URL="rtsp://${IPHONE_IP}:${RTSP_PORT}/live.sdp"
-DEVICE="hw:${CARD},0"
+# Output devices:
+#   sub0 (plughw:CARD,0) -> PulseAudio reads PCM1/sub0 for BirdNET-Pi recording.
+#     plughw (not hw:) handles format/rate conversion so ffmpeg doesn't crash if
+#     PulseAudio has locked the loopback to 44100 Hz stereo.
+#   sub1 (loopback_write_bark, defined in /etc/asound.conf) -> bark detector +
+#     birdnet_analyzer read PCM1/sub1 via dsnoop+plug (loopback_cap). Using a
+#     separate subdevice from PulseAudio's sub0 avoids exclusive-access conflicts.
+SUB0="plughw:${CARD},0"
+SUB1="loopback_write_bark"
 
 echo "Starting iPhone audio stream..."
 echo "  RTSP URL:   $RTSP_URL"
-echo "  Output:     $DEVICE (card $CARD)"
+echo "  Output:     $SUB0 (BirdNET/PulseAudio)  +  $SUB1 (bark detector)"
 echo "  Transport:  TCP (reliable for WiFi)"
 
-# exec replaces this shell with FFmpeg so systemd tracks the right PID
+# exec replaces this shell with FFmpeg so systemd tracks the right PID.
 #
 # Transport: TCP is far more reliable than UDP for persistent RTSP over WiFi.
-# UDP drops packets silently and FFmpeg hangs for 2+ minutes before timing out.
-# TCP detects connection loss quickly and lets systemd restart us.
+# Reconnection: systemd Restart=always + RestartSec=5 retries the RTSP URL
+# automatically whenever Periscope stops streaming.
 #
-# No custom timeouts: FFmpeg 7.x removed -stimeout and -rw_timeout, and
-# the replacement -timeout internally triggers rw_timeout which is also gone.
-# TCP + systemd Restart=always is sufficient for recovery.
+# asplit duplicates the decoded audio to both ALSA outputs simultaneously.
+# Each output is independent — an XRUN on one does not affect the other.
 #
 exec /usr/bin/ffmpeg \
     -rtsp_transport tcp \
     -i "$RTSP_URL" \
-    -vn \
-    -acodec pcm_s16le \
-    -ar 16000 \
-    -ac 1 \
-    -f alsa \
-    "$DEVICE"
+    -filter_complex "[0:a]asplit=2[a1][a2]" \
+    -map "[a1]" -acodec pcm_s16le -ar 16000 -ac 1 -f alsa "$SUB0" \
+    -map "[a2]" -acodec pcm_s16le -ar 16000 -ac 1 -f alsa "$SUB1"
