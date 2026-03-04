@@ -259,18 +259,35 @@ mqtt:
 
 template:
   - sensor:
-      # Bark Duration Calculator (minutes of barking per hour)
-      # Uses actual barking time from history_stats (in hours) divided by elapsed hours
+      # Bark Duration Calculator (minutes of barking per monitored hour)
+      # Divides by monitor uptime today, not elapsed clock time, so that
+      # outages (Eero failures, Pi reboots, etc.) don't dilute the rate.
       - unique_id: bark_minutes_per_hour
         name: "Barking Minutes Per Hour"
         unit_of_measurement: "min/hr"
         icon: mdi:clock-outline
         state: >
           {% set barking_hours = states('sensor.barking_time_today') | float(0) %}
-          {% set barking_minutes = barking_hours * 60 %}
-          {% set hours_today = now().hour + (now().minute / 60) %}
-          {% if hours_today > 0.1 and barking_minutes > 0 %}
-            {{ (barking_minutes / hours_today) | round(1) }}
+          {% set monitor_hours = states('sensor.monitor_uptime_today') | float(0) %}
+          {% if monitor_hours > 0.1 and barking_hours > 0 %}
+            {{ ((barking_hours * 60) / monitor_hours) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+
+      # Barking percentage of monitored time today
+      # history_stats "Barking Percentage Today" uses elapsed clock time as the
+      # denominator, which makes it artificially low when the monitor has been down.
+      # This template sensor divides by actual monitor uptime instead.
+      - unique_id: bark_percent_of_monitored_time
+        name: "Barking Percent of Monitored Time"
+        unit_of_measurement: "%"
+        icon: mdi:percent
+        state: >
+          {% set barking_hours = states('sensor.barking_time_today') | float(0) %}
+          {% set monitor_hours = states('sensor.monitor_uptime_today') | float(0) %}
+          {% if monitor_hours > 0.1 %}
+            {{ ((barking_hours / monitor_hours) * 100) | round(1) }}
           {% else %}
             0
           {% endif %}

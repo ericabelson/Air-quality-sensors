@@ -770,16 +770,39 @@ class HealthMonitor:
     # ------------------------------------------------------------------
 
     def _check_phone_reachable(self):
-        """Ping AUDIO_SOURCE_IP once; return True if host replies."""
+        """Check whether AUDIO_SOURCE_IP is reachable on the network.
+
+        Uses a non-blocking TCP connect rather than ping because iPhones
+        routinely ignore ICMP echo requests, which would make ping unreliable.
+
+        Distinguishes two failure modes:
+          - REFUSED  (errno ECONNREFUSED): host is up, port just not listening.
+                     Phone is on the network; Periscope may be closed.  → True
+          - TIMEOUT  (select returns nothing after 3s): packet dropped in
+                     network, typically an Eero mesh backhaul failure.   → False
+
+        This distinction matters for the WiFi reassociation logic: we only want
+        to roam to a different Eero node when the phone is genuinely unreachable
+        (timeout), not when Periscope has just been suspended (refused).
+        """
+        import socket as _socket, select as _select, errno as _errno
         try:
-            result = subprocess.run(
-                ["ping", "-c", "1", "-W", "2", AUDIO_SOURCE_IP],
-                capture_output=True,
-                timeout=6,
-            )
-            return result.returncode == 0
+            s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+            s.setblocking(False)
+            # Try port 7000 (AirPlay) — always present at the iOS level.
+            # CONNECTED or REFUSED both mean the host is responding on the network.
+            s.connect_ex((AUDIO_SOURCE_IP, 7000))
+            _, writable, _ = _select.select([], [s], [], 3)
+            if writable:
+                err = s.getsockopt(_socket.SOL_SOCKET, _socket.SO_ERROR)
+                # err==0 (connected) or ECONNREFUSED both mean host is reachable
+                reachable = (err == 0 or err == _errno.ECONNREFUSED)
+            else:
+                reachable = False  # timeout — packet dropped (likely mesh failure)
+            s.close()
+            return reachable
         except Exception as e:
-            logger.debug(f"[health] ping check error: {e}")
+            logger.debug(f"[health] phone reachability check error: {e}")
             return False
 
     def _check_service_active(self):
