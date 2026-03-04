@@ -271,10 +271,54 @@ Only ask the user to check the iPhone if port 8554 is CLOSED or if ping fails.
 | Phone not pingable | N/A | Timeout/connect failed | Phone off WiFi or powered off | Ask user to check phone |
 | Phone pingable | Open | No error, ffmpeg runs | Stream is live ✓ | No action needed |
 | Phone pingable | Open | ALSA assertion crash | Stream live but Pi-side ALSA problem | Fix Pi-side, NOT Periscope |
+| **Port times out, ALL ports on phone time out, mDNS works** | **Times out** | **Timeout** | **Router AP isolation blocking WiFi-to-WiFi TCP** | **Check Eero router settings** |
 
 **Rule:** Port 8554 open = Periscope IS running. "Invalid data" = stream not active.
 These are different conditions. Reporting "Periscope not open" when port 8554 IS open
 is misleading — the app is open, just not streaming.
+
+### Eero Mesh Backhaul Failure (2026-03-03 confirmed root cause)
+
+**Symptom:** All TCP ports on the iPhone timeout. mDNS still works (Periscope visible via
+`avahi-browse -r _peristream._tcp`). Pi can reach SOME devices on the LAN (e.g. one Sonos)
+but not others (iPhone, other Sonos). Pattern: reachable devices are on one Eero node;
+unreachable devices are on a different Eero node whose mesh backhaul is broken.
+
+**Cause:** The Eero mesh backhaul between nodes breaks — typically after a node reboots
+for a firmware update (Eero auto-updates 1–4 AM) and fails to re-establish the inter-node
+link. Unicast TCP between devices on different nodes is silently dropped. mDNS (multicast)
+still works because it's propagated differently across the mesh. The result looks exactly
+like AP isolation but is actually a routing failure within the Eero mesh.
+
+**Key diagnostic: test multiple devices, not just the iPhone**
+```bash
+# Test TCP to several LAN devices — if SOME work and SOME don't, it's mesh routing
+python3 -c "
+import socket, select
+for ip,port,label in [('192.168.68.106',8554,'iPhone'),('192.168.68.107',1400,'Ickyah'),('192.168.68.108',1400,'Diurnal')]:
+    s=socket.socket(); s.setblocking(False); s.connect_ex((ip,port))
+    r,w,e=select.select([],[s],[s],2)
+    print(label, 'CONNECTED' if w and s.getsockopt(socket.SOL_SOCKET,socket.SO_ERROR)==0 else 'REFUSED' if w else 'TIMEOUT')
+    s.close()
+"
+
+# Check which Eero node the Pi is on
+iw dev wlan0 link | grep Connected
+```
+
+**Fix — Pi-side (immediate, no router access needed):**
+```bash
+wpa_cli -i wlan0 reassociate   # Reconnects Pi to a (hopefully working) Eero node
+sudo systemctl restart iphone-audio-stream  # Reconnect ffmpeg
+```
+
+**Fix — router-side (permanent):** Power-cycle the Eero node(s) that lost their backhaul,
+or reboot all Eero nodes from the Eero app to force a clean mesh re-establishment.
+
+**Why the "reassociate" trick works:** Each Eero node has its own BSSID. `wpa_cli reassociate`
+causes the Pi to roam to whichever node has the strongest signal. If that node has a working
+backhaul, all devices become reachable again. If Diurnal Sonos becomes unreachable after
+reassociation but the iPhone becomes reachable, that confirms mesh routing is the cause.
 
 ---
 
@@ -341,6 +385,68 @@ This is intentional: even if PulseAudio grabs sub0 first at 44100 stereo, ffmpeg
 ---
 
 ## 9. What Was Fixed and When
+
+### 2026-03-03 — Eero mesh backhaul failure + WiFi auto-recovery
+
+**Problem:** Audio stream dropped at ~1:26 AM and could not reconnect despite Periscope
+running and the iPhone being on WiFi. All TCP connections to the iPhone timed out, but
+mDNS still worked. iOS system ports (AirPlay 7000, lockdown 62078) also timed out —
+ruling out any app-level or phone-side cause.
+
+**Root cause:** One of three Eero WiFi nodes (`BSSID 42:84:6A:02:16:0F`) had a broken
+mesh backhaul. Traffic between devices on different nodes was silently dropped. The Pi
+kept gravitating to this node because it was 3 dBm stronger than the working nodes.
+Multicast (mDNS, ARP) still worked because Eero propagates it differently. Unicast TCP
+was completely blocked between devices on different nodes. The broken node was most likely
+caused by an overnight Eero firmware update that caused one node to reboot and fail to
+re-establish its inter-node backhaul link cleanly.
+
+**Diagnosis method:**
+```bash
+# Test TCP to multiple LAN devices — if SOME work and SOME don't, it's mesh routing
+# (not the phone, not Periscope, not the Pi software)
+python3 -c "
+import socket, select
+for ip,port,label in [('192.168.68.106',8554,'iPhone'),('192.168.68.107',1400,'Ickyah'),('192.168.68.108',1400,'Diurnal')]:
+    s=socket.socket(); s.setblocking(False); s.connect_ex((ip,port))
+    r,w,e=select.select([],[s],[s],2)
+    print(label, 'CONNECTED' if w and s.getsockopt(socket.SOL_SOCKET,socket.SO_ERROR)==0 else 'TIMEOUT')
+    s.close()
+"
+# Some working (Diurnal Sonos) and some not (iPhone, Ickyah Sonos) = mesh fault
+
+# Force Pi to roam to a different Eero node
+wpa_cli -i wlan0 scan && sleep 3 && wpa_cli -i wlan0 scan_results | grep "42:84:6a"
+wpa_cli -i wlan0 roam <good-bssid>  # pick a node that works
+sudo systemctl restart iphone-audio-stream
+```
+
+**Fixes applied:**
+1. WiFi BSSID pinned to working node via NetworkManager (survives reboots):
+   ```bash
+   sudo nmcli connection modify crotalus 802-11-wireless.bssid 42:84:6A:02:1A:83
+   sudo nmcli connection up crotalus
+   ```
+2. Auto-recovery added to health monitor (`dog_bark_detector.py`): after 4 consecutive
+   cycles of "ALSA closed + phone unreachable" (= 2 minutes), the health monitor now
+   automatically calls `wpa_cli reassociate` to attempt a node hop, then restarts ffmpeg.
+   Constants: `WIFI_REASSOC_COOLDOWN_SECONDS=300`, `WIFI_REASSOC_AFTER_CYCLES=4`.
+
+**Permanent fix needed:** Power-cycle all Eero nodes (or restart via Eero app) to force
+the broken node to re-establish its mesh backhaul. After that, remove the BSSID pin:
+```bash
+sudo nmcli connection modify crotalus 802-11-wireless.bssid ""
+sudo nmcli connection up crotalus
+```
+
+**Why this was so hard to diagnose:**
+- mDNS confirmed Periscope was running → looked like Periscope was at fault
+- Ping to iPhone failed (iOS blocks ICMP) → looked like iPhone offline
+- But ALL ports on the iPhone timed out (including iOS system ports) → not the phone
+- Only after testing TCP to multiple devices revealed the pattern (some work, some don't)
+  was the Eero mesh routing identified as the cause
+
+---
 
 ### 2026-03-02 — Major pipeline overhaul
 

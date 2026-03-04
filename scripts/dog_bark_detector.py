@@ -141,6 +141,16 @@ XRUN_AUTO_RESTART = True
 # 30s is long enough to avoid restart storms but short enough to recover quickly.
 RESTART_COOLDOWN_SECONDS = 30
 
+# Minimum seconds between WiFi reassociation attempts.
+# Reassociation makes the Pi roam to a different Eero node — useful when a
+# broken Eero mesh backhaul causes the phone to be unreachable despite mDNS
+# working.  5 minutes is conservative enough not to thrash the WiFi connection.
+WIFI_REASSOC_COOLDOWN_SECONDS = 300
+
+# How many consecutive ALSA-closed + phone-unreachable cycles before we attempt
+# a WiFi reassociation (each cycle is HEALTH_CHECK_INTERVAL seconds).
+WIFI_REASSOC_AFTER_CYCLES = 4
+
 # Seconds without any non-silent audio before health is flagged as degraded.
 # 300 s (5 min) avoids false alarms during genuine quiet periods.
 REAL_AUDIO_TIMEOUT = 300
@@ -745,6 +755,8 @@ class HealthMonitor:
         self.detector = detector
         self.mqtt = mqtt_publisher
         self.last_restart_time = None
+        self.last_reassoc_time = None
+        self._closed_and_unreachable_count = 0  # consecutive cycles: closed+phone unreachable
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="HealthMonitor"
         )
@@ -844,6 +856,50 @@ class HealthMonitor:
             logger.error(f"[health] auto-restart exception: {e}")
             return False
 
+    def _try_wifi_reassociate(self):
+        """Ask wpa_supplicant to roam to a different Eero node.
+
+        When a broken Eero mesh backhaul causes the phone to be unreachable
+        despite mDNS working, the fix is to move the Pi to a different node.
+        This is a soft reassociation — the WiFi interface stays up, so the
+        SSH session and systemd services survive the brief roam.
+        After reassociation, the iphone-audio-stream service is restarted so
+        ffmpeg can connect to Periscope on the new routing path.
+        """
+        now = datetime.now()
+        if self.last_reassoc_time:
+            age = (now - self.last_reassoc_time).total_seconds()
+            if age < WIFI_REASSOC_COOLDOWN_SECONDS:
+                logger.debug(
+                    f"[health] WiFi reassociation skipped: cooldown "
+                    f"({age:.0f}s < {WIFI_REASSOC_COOLDOWN_SECONDS}s)"
+                )
+                return False
+        try:
+            result = subprocess.run(
+                ["wpa_cli", "-i", "wlan0", "reassociate"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0:
+                self.last_reassoc_time = now
+                self._closed_and_unreachable_count = 0
+                logger.warning(
+                    "[health] WiFi reassociation triggered — Pi roaming to "
+                    "different Eero node (broken mesh backhaul recovery)"
+                )
+                # Give the roam a moment to settle before restarting ffmpeg
+                time.sleep(3)
+                self._try_restart_service()
+                return True
+            else:
+                logger.error(
+                    f"[health] WiFi reassociation failed: {result.stderr.strip()}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"[health] WiFi reassociation exception: {e}")
+            return False
+
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
@@ -918,10 +974,27 @@ class HealthMonitor:
 
         # Auto-recovery: restart the service on XRUN or closed loopback
         if alsa_state in ("xrun", "closed") and XRUN_AUTO_RESTART:
+            if alsa_state == "closed" and not phone_ok:
+                # Phone unreachable + loopback closed: ffmpeg can't connect.
+                # Track consecutive cycles; after WIFI_REASSOC_AFTER_CYCLES try
+                # roaming to a different Eero node (broken mesh backhaul fix).
+                self._closed_and_unreachable_count += 1
+                if self._closed_and_unreachable_count >= WIFI_REASSOC_AFTER_CYCLES:
+                    logger.warning(
+                        f"[health] {self._closed_and_unreachable_count} cycles with "
+                        "closed loopback + unreachable phone — attempting WiFi "
+                        "reassociation (Eero mesh backhaul recovery)"
+                    )
+                    self._try_wifi_reassociate()
+                    return  # reassociate already restarts the service
+            else:
+                self._closed_and_unreachable_count = 0
             logger.warning(
                 f"[health] ALSA {alsa_state} detected — auto-restarting audio service"
             )
             self._try_restart_service()
+        else:
+            self._closed_and_unreachable_count = 0
 
 
 # ============================================================================
