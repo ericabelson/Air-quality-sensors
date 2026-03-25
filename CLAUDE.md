@@ -85,4 +85,6 @@ tasks/            Claude Code task tracking (active + archive)
 - `dog_bark_detector.py` auto-detects the loopback capture device by looking
   for `"Loopback"` + `",1)"` in the PyAudio device name
 - iPhone stream requires the Periscope HD app to be actively streaming;
-  `iphone-audio-stream.service` retries every 5s automatically
+  `iphone-audio-stream.service` pre-checks iPhone reachability with `nc` —
+  if unreachable, waits 30s before retry (prevents restart-loop CPU spikes);
+  if reachable, ffmpeg launches and systemd retries every 5s on disconnect

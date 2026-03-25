@@ -166,16 +166,43 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class BirdDetectionTracker:
-    """Tracks daily bird detection statistics."""
+    """Tracks daily bird detection statistics.
+
+    Recovers today's counts from the CSV on startup so that reboots
+    don't zero out the dashboard mid-day.
+    """
 
     def __init__(self):
         self._reset()
+        self._recover_from_csv()
 
     def _reset(self):
         self.today = date.today()
         self.species_seen = set()
         self.total_detections = 0
         self.detections_by_species = defaultdict(int)
+
+    def _recover_from_csv(self):
+        """Re-read today's detections from the CSV so restarts keep counts."""
+        today_str = self.today.isoformat()
+        try:
+            with open(BIRD_DETECTIONS_CSV, 'r') as f:
+                for line in f:
+                    parts = line.strip().split(',')
+                    if len(parts) >= 4 and parts[1] == today_str:
+                        common_name = parts[3]
+                        self.species_seen.add(common_name)
+                        self.total_detections += 1
+                        self.detections_by_species[common_name] += 1
+            if self.total_detections > 0:
+                logger.info(
+                    f"Recovered {self.total_detections} detections, "
+                    f"{len(self.species_seen)} species from CSV for {today_str}"
+                )
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.error(f"CSV recovery error: {e}")
 
     def _check_new_day(self):
         if date.today() != self.today:
@@ -272,7 +299,7 @@ class MQTTPublisher:
         })
 
     def publish_stats(self, stats):
-        self.publish(MQTT_TOPIC_STATS, stats)
+        self.publish(MQTT_TOPIC_STATS, stats, retain=True)
 
     def disconnect(self):
         self.publish_status("offline")

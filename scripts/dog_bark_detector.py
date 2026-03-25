@@ -961,7 +961,17 @@ class HealthMonitor:
             mins = int(real_audio_age // 60)
             issues.append(f"No real audio for {mins}m — silent or source muted")
 
-        pipeline_ok = phone_ok and service_ok and alsa_ok and audio_ok
+        # Pipeline is OK if infrastructure is healthy (phone, service, ALSA).
+        # Silence (no real audio) is NOT a pipeline failure — it just means the
+        # environment is quiet.  Only count audio_ok as a failure when the
+        # infrastructure is also broken (confirms a real outage vs just quiet).
+        pipeline_ok = phone_ok and service_ok and alsa_ok
+        if not audio_ok and not pipeline_ok:
+            # Both infrastructure AND audio are failing — genuine outage
+            pass  # pipeline_ok is already False
+        elif not audio_ok:
+            # Audio is quiet but infrastructure is fine — monitor is active
+            pass  # pipeline_ok stays True
         overall = "ok" if pipeline_ok else "degraded"
 
         payload = {
@@ -994,6 +1004,14 @@ class HealthMonitor:
             self.detector._log_uptime_event(
                 "health_degraded", "; ".join(issues)
             )
+
+        # Recover monitor_active=True when pipeline returns to healthy
+        if pipeline_ok and not self.detector.monitor_active:
+            self.detector._publish_monitor_active(True)
+            self.detector._log_uptime_event(
+                "resume", "Pipeline recovered — health checks OK"
+            )
+            logger.info("[health] Pipeline recovered — monitor_active restored")
 
         # Auto-recovery: restart the service on XRUN or closed loopback
         if alsa_state in ("xrun", "closed") and XRUN_AUTO_RESTART:
@@ -1319,7 +1337,10 @@ class DogBarkDetector:
                 if int(time.time()) % 1 == 0:
                     self.mqtt.publish_decibels(decibels)
 
-                # Silence detection - catch the case where stream is open but reading dead air
+                # Silence detection - track quiet audio but do NOT mark monitor inactive.
+                # Silence means the stream is alive but quiet — the monitor IS active
+                # and would detect barking if it occurred.  Only the HealthMonitor
+                # (pipeline failure) or no-data path should set monitor_active=False.
                 if decibels <= SILENCE_THRESHOLD_DB:
                     if self.silence_start_time is None:
                         self.silence_start_time = datetime.now()
@@ -1332,32 +1353,26 @@ class DogBarkDetector:
                         if not self.silence_alerted:
                             self.silence_alerted = True
                             self.mic_status = 'silence'
-                            self._publish_monitor_active(False)
+                            # Log the silence event but keep monitor_active=True.
+                            # The stream IS open and we ARE reading data — it's just quiet.
                             self._log_uptime_event('silence', f'No real audio for {int(silence_duration)}s')
-                            logger.warning(
-                                f"SILENCE DETECTED: Audio stuck at {decibels:.0f} dB for "
-                                f"{int(silence_duration)}s. No real audio is being captured!"
+                            logger.info(
+                                f"Silence: audio at {decibels:.0f} dB for "
+                                f"{int(silence_duration)}s — monitor still active"
                             )
-                            logger.warning("Possible causes:")
-                            logger.warning("  - ALSA loopback not loaded (sudo modprobe snd-aloop)")
-                            logger.warning("  - iphone-audio-stream service not running")
-                            logger.warning("  - iPhone Periscope HD app not streaming")
-                            logger.warning("  - Wrong audio device selected")
                             self.mqtt.publish_mic_status(
                                 'silence',
-                                f'No real audio - constant {decibels:.0f} dB for {int(silence_duration)}s. '
-                                f'Check: snd-aloop module, iphone-audio-stream service, Periscope HD app'
+                                f'Audio quiet ({decibels:.0f} dB) for {int(silence_duration)}s — still monitoring'
                             )
                         elif int(silence_duration) % 300 == 0:
-                            # Re-alert every 5 minutes of continuous silence
-                            logger.warning(
-                                f"Still silent: {int(silence_duration)}s of silence "
-                                f"({int(silence_duration / 60)} min)"
+                            # Re-log every 5 minutes of continuous silence
+                            logger.info(
+                                f"Still silent: {int(silence_duration)}s "
+                                f"({int(silence_duration / 60)} min) — monitor still active"
                             )
                             self.mqtt.publish_mic_status(
                                 'silence',
-                                f'Continuous silence for {int(silence_duration / 60)} min. '
-                                f'No audio input device providing real audio.'
+                                f'Quiet for {int(silence_duration / 60)} min — still monitoring'
                             )
                 else:
                     # Real audio detected - reset silence tracking
@@ -1366,12 +1381,9 @@ class DogBarkDetector:
                         logger.info(f"Audio restored - silence ended after "
                                     f"{int((datetime.now() - self.silence_start_time).total_seconds())}s")
                         self.mqtt.publish_mic_status('online', 'Real audio detected - silence ended')
-                    # Recover monitor_active if we were in silence state
                     if self.mic_status == 'silence':
                         self.mic_status = 'online'
-                        if not self.monitor_active:
-                            self._publish_monitor_active(True)
-                            self._log_uptime_event('resume', 'Real audio detected after silence')
+                        self._log_uptime_event('resume', 'Real audio detected after silence')
                     self.silence_start_time = None
                     self.silence_alerted = False
 
