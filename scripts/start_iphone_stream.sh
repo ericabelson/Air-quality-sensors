@@ -57,6 +57,16 @@ RTSP_URL="rtsp://${IPHONE_IP}:${RTSP_PORT}/live.sdp"
 SUB0="plughw:${CARD},0"
 SUB1="loopback_write_bark"
 
+# Check if iPhone is reachable before hammering it with ffmpeg.
+# When the iPhone is offline (app closed, phone away), ffmpeg fails instantly
+# and systemd restarts every 5 seconds — this floods the journal and pegs CPU.
+# A 30-second sleep here means the effective retry interval becomes 35s.
+if ! nc -z -w 3 "$IPHONE_IP" "$RTSP_PORT" 2>/dev/null; then
+    echo "iPhone not reachable at ${IPHONE_IP}:${RTSP_PORT} — waiting 30s before retry"
+    sleep 30
+    exit 1
+fi
+
 echo "Starting iPhone audio stream..."
 echo "  RTSP URL:   $RTSP_URL"
 echo "  Output:     $SUB0 (BirdNET/PulseAudio)  +  $SUB1 (bark detector)"
@@ -72,7 +82,9 @@ echo "  Transport:  TCP (reliable for WiFi)"
 # Each output is independent — an XRUN on one does not affect the other.
 #
 exec /usr/bin/ffmpeg \
+    -hide_banner \
     -rtsp_transport tcp \
+    -thread_queue_size 512 \
     -i "$RTSP_URL" \
     -filter_complex "[0:a]asplit=2[a1][a2]" \
     -map "[a1]" -acodec pcm_s16le -ar 16000 -ac 1 -f alsa "$SUB0" \
