@@ -1013,12 +1013,28 @@ class HealthMonitor:
             )
             logger.info("[health] Pipeline recovered — monitor_active restored")
 
-        # Auto-recovery: restart the service on XRUN or closed loopback
+        # Auto-recovery logic.
+        #
+        # There are TWO restart paths for the audio stream:
+        #   1. systemd Restart=always (RestartSec=5) — the primary path.
+        #      The start script has an nc pre-check: if the phone is
+        #      unreachable it sleeps 30s and exits, so the effective retry
+        #      is ~35s.  systemd also has StartLimitBurst=10/120s as a
+        #      safety net.
+        #   2. This HealthMonitor — the secondary path, for situations
+        #      systemd can't detect (XRUN, mesh backhaul failure).
+        #
+        # Rule: if the phone is unreachable and ALSA is closed, that's
+        # the normal "phone offline" state.  systemd is already retrying
+        # with backoff — we do NOT pile on with our own restart.  We only
+        # act when we can add value that systemd can't:
+        #   - XRUN (audio frozen but ffmpeg is still "running")
+        #   - Persistent unreachability suggesting a mesh routing issue
         if alsa_state in ("xrun", "closed") and XRUN_AUTO_RESTART:
             if alsa_state == "closed" and not phone_ok:
-                # Phone unreachable + loopback closed: ffmpeg can't connect.
-                # Track consecutive cycles; after WIFI_REASSOC_AFTER_CYCLES try
-                # roaming to a different Eero node (broken mesh backhaul fix).
+                # Phone unreachable + loopback closed — systemd is already
+                # retrying with the nc backoff.  Don't restart the service
+                # ourselves; just track consecutive cycles for mesh recovery.
                 self._closed_and_unreachable_count += 1
                 if self._closed_and_unreachable_count >= WIFI_REASSOC_AFTER_CYCLES:
                     logger.warning(
@@ -1027,11 +1043,21 @@ class HealthMonitor:
                         "reassociation (Eero mesh backhaul recovery)"
                     )
                     self._try_wifi_reassociate()
-                    return  # reassociate already restarts the service
+                else:
+                    logger.info(
+                        f"[health] phone unreachable, loopback closed — "
+                        f"systemd is retrying (cycle "
+                        f"{self._closed_and_unreachable_count}/"
+                        f"{WIFI_REASSOC_AFTER_CYCLES} before mesh recovery)"
+                    )
+                return  # let systemd handle it
             else:
                 self._closed_and_unreachable_count = 0
+            # XRUN or closed-but-phone-reachable: systemd thinks the
+            # service is fine (ffmpeg PID is alive), so only we can fix it.
             logger.warning(
-                f"[health] ALSA {alsa_state} detected — auto-restarting audio service"
+                f"[health] ALSA {alsa_state} detected — auto-restarting "
+                f"audio service (phone reachable, systemd can't detect this)"
             )
             self._try_restart_service()
         else:
